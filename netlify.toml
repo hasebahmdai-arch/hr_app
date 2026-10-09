@@ -2,6 +2,10 @@
   command = "npm run build"
   publish = ".next"
 
+# Public company config (appears in UI / defaults) — not secrets
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "COMPANY_CODE_PREFIX,COMPANY_TIMEZONE,BRAND_PRIMARY_HEX"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
