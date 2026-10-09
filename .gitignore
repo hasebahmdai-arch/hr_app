@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -15,22 +13,40 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
+*.log
+Thumbs.db
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# local env files
-.env*.local
+# env files (keep .env.example tracked)
+.env
+.env.*
+!.env.example
 
-# vercel
+# vercel / netlify
 .vercel
+.netlify
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE / local tooling
+.idea
+.vscode
+.cursor
+*.swp
+*.swo
+
+# OS
+.AppleDouble
+.LSOverride

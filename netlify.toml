@@ -1,0 +1,16 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild"
+
+[functions."scheduled-birthdays"]
+  schedule = "0 8 * * *"
+
+# Midnight Asia/Karachi (UTC+5) ≈ 19:00 UTC
+[functions."scheduled-auto-checkout"]
+  schedule = "0 19 * * *"

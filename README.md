@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HR Self-Service Portal
 
-## Getting Started
+Employee + HR portal built with Next.js 14, MongoDB (GridFS), Auth.js v5, TanStack Query, and Analytico branding. Deployable on Netlify.
 
-First, run the development server:
+## Prerequisites
+
+- Node.js 18+
+- MongoDB Atlas or local MongoDB
+
+## Production setup
+
+```bash
+cp .env.example .env.local
+# Set MONGODB_URI, AUTH_SECRET, BOOTSTRAP_SECRET, AUTH_URL
+
+npm install
+npm run build
+npm run start
+```
+
+1. Visit `/setup` and create the first HR administrator (requires `BOOTSTRAP_SECRET`)
+2. Sign in and configure departments/shifts under **Admin**
+3. Add employees and HR users under **People → Add User**
+
+## Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Optional demo data (timesheets, requests, announcements) after users exist:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run seed:demo
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run start` | Production server |
+| `npm run seed:demo` | Seed optional demo data (requires existing users) |
 
-To learn more about Next.js, take a look at the following resources:
+## Environment variables
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+See [`.env.example`](.env.example). Required:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `MONGODB_URI` — MongoDB connection string
+- `AUTH_SECRET` — random 32+ character secret
+- `AUTH_URL` — app URL (e.g. `http://localhost:3000`)
+- `BOOTSTRAP_SECRET` — secret for one-time `/setup` (first HR account)
 
-## Deploy on Vercel
+Optional:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `COMPANY_CODE_PREFIX` — employee code prefix (default `ADS`)
+- `BRAND_PRIMARY_HEX` — override primary brand color (default `#F97316`)
+- Email (Resend): `ENABLE_EMAIL_NOTIFICATIONS`, `RESEND_API_KEY`, `EMAIL_FROM`, `HR_EMAIL`, `CRON_SECRET`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Netlify deployment
+
+1. Connect repo to Netlify
+2. Install `@netlify/plugin-nextjs` (build plugin)
+3. Set environment variables in Netlify dashboard
+4. Visit `/setup` once after deploy to create the first HR user
+5. Scheduled birthdays function: `netlify/functions/scheduled-birthdays.ts` (daily 08:00 UTC cron in `netlify.toml`)
+
+## Features
+
+- **Employee Dashboard** — clock in/out with separate actions, live work timer, break tracking, personal metrics
+- **HR Dashboard** — team KPIs, pending requests queue, attendance table, charts, CSV exports (attendance / requests / employees)
+- **Profile** — employee read-only own profile; HR edits at `/app/people/[id]`
+- **People** — HR-only directory to browse, add, and manage users (hidden from employees)
+- **Celebrations** — upcoming birthdays and anniversaries visible to all employees on the dashboard
+- **Timesheet** — filters, status legend, paginated logs; HR can filter by employee
+- **Requests** — punch, expense, leave, loans, WFH, official duty, relaxation, travel
+- **HR Admin** — departments, shifts, company documents
+- **Web + Mobile** — responsive shells (sidebar vs bottom nav) with Analytico orange/white branding
+- **Files** — MongoDB GridFS via `/api/files`
+
+### Clock & break actions
+
+Employees use explicit punch actions via `POST /api/timesheets/punch`:
+
+| Action | Description |
+|--------|-------------|
+| `check_in` | Start the work day |
+| `break_start` | Pause work timer, start break |
+| `break_end` | End break, resume work timer |
+| `check_out` | End the work day (disabled while on break) |
+
+Today's session state is available at `GET /api/timesheets/today`.
+
+### Approved attendance requests
+
+When HR approves attendance-related requests, the timesheet is updated automatically:
+
+| Request type | Timesheet effect |
+|--------------|------------------|
+| Punch (check in/out) | Sets `checkIn` or `checkOut` for the requested date; recalculates worked minutes |
+| Leave | Marks each day in range with status `L` |
+| WFH | Marks each date with status `W` |
+| Official duty | Marks each date with status `O` |
+| Relaxation | Reduces `shortMinutes` on the given date |
+
+Approving a cancellation on a completed attendance request reverts the timesheet to its prior state.
+
+## Tech stack
+
+Next.js 14 · TypeScript · MongoDB/Mongoose · GridFS · Auth.js v5 · TanStack Query · Tailwind · Recharts · Resend (optional)

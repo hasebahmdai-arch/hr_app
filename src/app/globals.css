@@ -3,21 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: 0 0% 100%;
+  --foreground: 220 9% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 9% 15%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 25 95% 53%;
+  --brand-primary: #f97316;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  @apply bg-background text-foreground antialiased;
 }
 
 @layer utilities {
