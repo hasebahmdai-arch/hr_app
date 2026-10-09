@@ -121,7 +121,7 @@ export async function POST(req: Request) {
       record.checkOut = now;
       record.checkOutLocation = location;
       record.breakMinutes = sumBreakMinutes(breaks);
-      record.workedMinutes = computeNetWorkedMinutes(record.checkIn, record.checkOut, breaks);
+      record.workedMinutes = computeNetWorkedMinutes(record.checkIn, record.checkOut);
       record.shortMinutes = Math.max(expectedMinutes - record.workedMinutes, 0);
       await record.save();
       return apiSuccess({ action, session: buildTodaySession(record.toObject(), shift) });

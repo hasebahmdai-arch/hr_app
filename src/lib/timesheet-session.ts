@@ -24,7 +24,6 @@ export function sumBreakMinutes(breaks: TimesheetBreak[] = [], now = new Date())
 export function computeNetWorkedMinutes(
   checkIn?: Date | null,
   checkOut?: Date | null,
-  _breaks: TimesheetBreak[] = [],
   now = new Date()
 ) {
   // Work time is continuous from check-in; break time is tracked separately but still counts as work.
@@ -70,7 +69,7 @@ export function buildTodaySession(record: {
     shiftEnd: shift?.endTime,
     breakTotalMinutes,
     activeBreakStartedAt: openBreak?.startedAt.toISOString(),
-    workedMinutesSoFar: computeNetWorkedMinutes(record?.checkIn, record?.checkOut, breaks),
+    workedMinutesSoFar: computeNetWorkedMinutes(record?.checkIn, record?.checkOut),
     expectedMinutes: record?.expectedMinutes ?? 480,
   };
 }

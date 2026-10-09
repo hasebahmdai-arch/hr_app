@@ -57,7 +57,7 @@ export async function autoCheckoutForgottenSessions(employeeId?: string) {
 
     record.checkOut = checkoutAt;
     record.breakMinutes = sumBreakMinutes(breaks, checkoutAt);
-    record.workedMinutes = computeNetWorkedMinutes(record.checkIn, checkoutAt, breaks);
+    record.workedMinutes = computeNetWorkedMinutes(record.checkIn, checkoutAt);
     const expected = record.expectedMinutes ?? 480;
     record.shortMinutes = Math.max(expected - record.workedMinutes, 0);
     if (!record.statusCode || record.statusCode === "P") {

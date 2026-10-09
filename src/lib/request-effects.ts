@@ -2,7 +2,7 @@ import { eachDayOfInterval, format } from "date-fns";
 import type { RequestType } from "@/lib/constants";
 import { Employee, Timesheet } from "@/lib/models";
 import { shiftToMinutes } from "@/lib/profile-utils";
-import { computeNetWorkedMinutes, type TimesheetBreak } from "@/lib/timesheet-session";
+import { computeNetWorkedMinutes } from "@/lib/timesheet-session";
 
 export interface TimesheetSnapshot {
   date: string;
@@ -122,7 +122,6 @@ export async function applyRequestEffect(
 
     const date = format(new Date(requestedTimestamp), "yyyy-MM-dd");
     const existing = await findTimesheet(employeeId, date);
-    const breaks = (existing?.breaks as TimesheetBreak[]) ?? [];
     const punchAt = new Date(requestedTimestamp);
 
     if (punchType === "check_in") {
@@ -141,7 +140,7 @@ export async function applyRequestEffect(
       if (punchAt.getTime() < checkIn.getTime()) {
         throw new Error("Check-out time must be on or after check-in");
       }
-      const workedMinutes = computeNetWorkedMinutes(checkIn, punchAt, breaks);
+      const workedMinutes = computeNetWorkedMinutes(checkIn, punchAt);
       const expectedMinutes = Number(existing?.expectedMinutes ?? expectedMinutesForShift(shift));
       dates.push(
         await applyDateEffect(employeeId, date, {
