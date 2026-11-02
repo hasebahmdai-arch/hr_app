@@ -54,6 +54,12 @@ export interface Employee {
   qualifications?: Qualification[];
   relatives?: Relative[];
   banks?: BankInfo;
+  leaveBalances?: {
+    leaveType: "Sick" | "Casual";
+    year: number;
+    entitled: number;
+    used: number;
+  }[];
 }
 
 export interface Notification {
@@ -96,6 +102,8 @@ export interface Timesheet {
   isAbsent?: boolean;
   isLate?: boolean;
   isMissedCheckout?: boolean;
+  isWeekendWork?: boolean;
+  isHolidayWork?: boolean;
   workedMinutes: number;
   expectedMinutes: number;
   shortMinutes: number;

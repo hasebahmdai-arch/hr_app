@@ -16,11 +16,11 @@ import { ChevronLeft, ChevronRight, Cake, Award, FileText } from "lucide-react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { Avatar } from "@/components/shared/Avatar";
+import { AttendanceStatTiles } from "@/components/shared/dashboard/AttendanceStatTiles";
 import { ClockWidget } from "@/components/shared/dashboard/ClockWidget";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 
 const CHART_COLOR = "#F97316";
 
@@ -47,30 +47,18 @@ export function EmployeeDashboardWeb() {
         action={<Button variant="outline" size="sm" onClick={() => refetchAll()}>Refresh</Button>}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <ClockWidget />
-        </div>
-        <QueryBoundary isLoading={isLoading} isError={isError} onRetry={refetchAll}>
-          <Card className="border-0 shadow-card">
-            <CardHeader><CardTitle className="text-base">This Month</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(att?.statusCounters ?? {}).slice(0, 4).map(([code, count]) => (
-                  <div key={code} className="text-center p-3 rounded-xl bg-muted-bg">
-                    <StatusBadge status={code} />
-                    <p className="text-2xl font-bold mt-1">{count}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-muted-foreground mt-4">Attendance: <span className="font-semibold text-primary">{att?.attendancePct ?? 0}%</span></p>
-            </CardContent>
-          </Card>
-        </QueryBoundary>
-      </div>
+      <ClockWidget />
 
-      <Card className="border-0 shadow-card">
-        <CardHeader className="flex flex-row items-center justify-between">
+      <QueryBoundary isLoading={isLoading} isError={isError} onRetry={refetchAll}>
+        <AttendanceStatTiles
+          tiles={att?.statTiles}
+          holidays={att?.holidays}
+          leaveBalances={att?.leaveBalances}
+        />
+      </QueryBoundary>
+
+      <Card className="shadow-card">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
           <CardTitle className="text-base">Check-in Trend</CardTitle>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => shiftMonth(-1)}><ChevronLeft className="h-4 w-4" /></Button>
@@ -78,7 +66,7 @@ export function EmployeeDashboardWeb() {
             <Button variant="ghost" size="icon" onClick={() => shiftMonth(1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={att?.trends ?? []}>
@@ -94,9 +82,9 @@ export function EmployeeDashboardWeb() {
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-card">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Cake className="h-4 w-4 text-primary" />Birthdays</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+        <Card className="shadow-card">
+          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Cake className="h-4 w-4 text-primary" />Birthdays</CardTitle></CardHeader>
+          <CardContent className="space-y-3 pt-4">
             {cel?.birthdays.length ? cel.birthdays.map((b) => (
               <div key={b._id} className="flex items-center gap-3">
                 <Avatar firstName={b.firstName} lastName={b.lastName} fileId={b.avatarFileId} size="sm" />
@@ -105,9 +93,9 @@ export function EmployeeDashboardWeb() {
             )) : <p className="text-sm text-muted-foreground">No birthdays soon</p>}
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-card">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Award className="h-4 w-4 text-primary" />Anniversaries</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+        <Card className="shadow-card">
+          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Award className="h-4 w-4 text-primary" />Anniversaries</CardTitle></CardHeader>
+          <CardContent className="space-y-3 pt-4">
             {cel?.anniversaries.length ? cel.anniversaries.map((a) => (
               <div key={a._id} className="flex items-center gap-3">
                 <Avatar firstName={a.firstName} lastName={a.lastName} fileId={a.avatarFileId} size="sm" />
@@ -116,17 +104,17 @@ export function EmployeeDashboardWeb() {
             )) : <p className="text-sm text-muted-foreground">No anniversaries soon</p>}
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-card">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4 text-primary" />Documents</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
+        <Card className="shadow-card">
+          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4 text-primary" />Documents</CardTitle></CardHeader>
+          <CardContent className="space-y-2 pt-4">
             {ann?.companyDocuments.length ? ann.companyDocuments.slice(0, 5).map((d) => (
               <a key={d._id} href={`/api/files/${d.fileId}`} target="_blank" rel="noopener" className="block text-sm hover:text-primary truncate">{d.title}</a>
             )) : <p className="text-sm text-muted-foreground">No documents</p>}
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-card">
-          <CardHeader><CardTitle className="text-base">Announcements</CardTitle></CardHeader>
-          <CardContent>
+        <Card className="shadow-card">
+          <CardHeader className="pb-2"><CardTitle className="text-base">Announcements</CardTitle></CardHeader>
+          <CardContent className="pt-4">
             {ann?.announcements.length ? ann.announcements.slice(0, 3).map((a, i) => (
               <div key={a._id} className={i === 0 ? "p-3 rounded-xl bg-primary-tint mb-2" : "mb-2"}>
                 <p className="text-sm font-medium">{a.title}</p>

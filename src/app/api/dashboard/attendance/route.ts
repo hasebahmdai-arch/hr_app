@@ -1,10 +1,12 @@
-import { format, parse, startOfMonth, endOfMonth, eachDayOfInterval } from "date-fns";
+import { format, parse, startOfMonth, endOfMonth } from "date-fns";
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireSession } from "@/lib/auth";
+import { computeStatTiles } from "@/lib/attendance-stats";
 import connectDB from "@/lib/db";
+import { getHolidayDatesInRange } from "@/lib/holidays";
+import { ensureYearBalances, summarizeBalances } from "@/lib/leave-balance";
 import { Employee, Timesheet } from "@/lib/models";
 import {
-  computeAttendancePct,
   dateToCheckInMinutes,
   shiftToMinutes,
 } from "@/lib/profile-utils";
@@ -27,16 +29,26 @@ export async function GET(req: Request) {
     const dateFrom = format(monthStart, "yyyy-MM-dd");
     const dateTo = format(monthEnd, "yyyy-MM-dd");
     const today = format(new Date(), "yyyy-MM-dd");
+    const year = monthStart.getFullYear();
 
-    const employee = await Employee.findById(session.user.id).populate("shiftId");
+    const [employee, records, holidays, balances] = await Promise.all([
+      Employee.findById(session.user.id).populate("shiftId").select("shiftId hireDate leaveBalances"),
+      Timesheet.find({
+        employeeId: session.user.id,
+        date: { $gte: dateFrom, $lte: dateTo },
+      })
+        .select(
+          "date statusCode checkIn checkOut sessions checkinStatus checkoutStatus workedMinutes expectedMinutes shortMinutes breakMinutes isWeekendWork isHolidayWork"
+        )
+        .sort({ date: 1 })
+        .lean(),
+      getHolidayDatesInRange(dateFrom, dateTo),
+      ensureYearBalances(session.user.id, year),
+    ]);
+
     const shift = employee?.shiftId as { startTime?: string; endTime?: string; breakMinutes?: number } | null;
+    const holidaySet = new Set(holidays.map((h) => h.date));
 
-    const records = await Timesheet.find({
-      employeeId: session.user.id,
-      date: { $gte: dateFrom, $lte: dateTo },
-    }).sort({ date: 1 });
-
-    const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd }).length;
     const statusCounters: Record<string, number> = {};
     const anomalyCounters: Record<string, number> = {};
     let workedMinutes = 0;
@@ -50,17 +62,18 @@ export async function GET(req: Request) {
       expectedMinutes += r.expectedMinutes || 0;
       shortMinutes += r.shortMinutes || 0;
       breakMinutes += r.breakMinutes || 0;
-      if (r.checkinStatus && r.checkinStatus !== "on_time") {
+      if (r.checkinStatus) {
         anomalyCounters[r.checkinStatus] = (anomalyCounters[r.checkinStatus] || 0) + 1;
       }
-      if (r.checkoutStatus && r.checkoutStatus !== "on_time") {
+      if (r.checkoutStatus) {
         anomalyCounters[r.checkoutStatus] = (anomalyCounters[r.checkoutStatus] || 0) + 1;
       }
     }
 
-    const shiftWorkedMinutes = shift?.startTime && shift?.endTime
-      ? shiftToMinutes(shift.startTime, shift.endTime, shift.breakMinutes ?? 60)
-      : 480;
+    const shiftWorkedMinutes =
+      shift?.startTime && shift?.endTime
+        ? shiftToMinutes(shift.startTime, shift.endTime, shift.breakMinutes ?? 60)
+        : 480;
 
     const trends = records.map((r) => ({
       date: r.date,
@@ -68,10 +81,16 @@ export async function GET(req: Request) {
     }));
 
     const todayRecord = records.find((r) => r.date === today);
+    const statTiles = computeStatTiles({
+      month,
+      records: records as never,
+      holidayDates: holidaySet,
+      hireDate: employee?.hireDate,
+    });
 
     const response: DashboardAttendanceResponse = {
       month,
-      attendancePct: computeAttendancePct(records, monthDays),
+      attendancePct: statTiles.attendancePct,
       shiftMetrics: {
         totalShifts: records.length,
         expectedMinutes,
@@ -82,13 +101,16 @@ export async function GET(req: Request) {
       },
       statusCounters,
       anomalyCounters,
+      statTiles,
+      holidays,
+      leaveBalances: summarizeBalances(balances, year),
       trends,
       todayRecord: todayRecord
         ? {
-            checkIn: todayRecord.checkIn?.toISOString(),
-            checkOut: todayRecord.checkOut?.toISOString(),
-            checkInDisplay: formatTimeDisplay(todayRecord.checkIn) ?? undefined,
-            checkOutDisplay: formatTimeDisplay(todayRecord.checkOut) ?? undefined,
+            checkIn: todayRecord.checkIn ? new Date(todayRecord.checkIn).toISOString() : undefined,
+            checkOut: todayRecord.checkOut ? new Date(todayRecord.checkOut).toISOString() : undefined,
+            checkInDisplay: formatTimeDisplay(todayRecord.checkIn ? new Date(todayRecord.checkIn) : null) ?? undefined,
+            checkOutDisplay: formatTimeDisplay(todayRecord.checkOut ? new Date(todayRecord.checkOut) : null) ?? undefined,
             shiftStart: shift?.startTime,
             shiftEnd: shift?.endTime,
           }

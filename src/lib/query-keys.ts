@@ -25,6 +25,9 @@ export const queryKeys = {
   admin: {
     departments: () => ["admin", "departments"] as const,
     shifts: () => ["admin", "shifts"] as const,
+    holidays: () => ["admin", "holidays"] as const,
     documents: (type?: string) => ["admin", "documents", type ?? "all"] as const,
   },
+  holidays: (from?: string, to?: string) => ["holidays", from ?? "", to ?? ""] as const,
+  leaveBalancesMe: () => ["leave-balances", "me"] as const,
 };

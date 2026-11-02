@@ -58,9 +58,18 @@ export const EmployeeSchema = new Schema(
     qualifications: [{ degree: String, institution: String, year: Number }],
     relatives: [{ name: String, relationship: String, phone: String, isDependent: Boolean }],
     banks: { bankName: String, iban: String, branchCode: String },
+    leaveBalances: [
+      {
+        leaveType: { type: String, enum: ["Sick", "Casual"], required: true },
+        year: { type: Number, required: true },
+        entitled: { type: Number, required: true },
+        used: { type: Number, default: 0 },
+      },
+    ],
   },
   { timestamps: true }
 );
+EmployeeSchema.index({ "leaveBalances.year": 1 });
 
 const timesheetBreakSub = {
   startedAt: Date,
@@ -98,10 +107,14 @@ export const TimesheetSchema = new Schema(
     sessions: [timesheetSessionSub],
     statusCode: { type: String, default: "P" },
     source: { type: String, enum: ["manual", "punch", "import"], default: "punch" },
+    isWeekendWork: { type: Boolean, default: false },
+    isHolidayWork: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 TimesheetSchema.index({ employeeId: 1, date: 1 }, { unique: true });
+TimesheetSchema.index({ date: 1, checkOut: 1, checkIn: 1 });
+TimesheetSchema.index({ date: 1, "sessions.checkOut": 1 });
 
 export const PunchEventSchema = new Schema(
   {
@@ -138,9 +151,19 @@ export const PunchRequestSchema = new Schema(
   { timestamps: true }
 );
 export const LeaveRequestSchema = new Schema(
-  { ...baseRequestFields, leaveType: String, startDate: Date, endDate: Date, reason: String },
+  {
+    ...baseRequestFields,
+    leaveType: String,
+    startDate: Date,
+    endDate: Date,
+    reason: String,
+    daysRequested: { type: Number, default: 0 },
+    daysDeductedSoFar: { type: Number, default: 0 },
+    deductedDates: { type: [String], default: [] },
+  },
   { timestamps: true }
 );
+LeaveRequestSchema.index({ status: 1, daysDeductedSoFar: 1, startDate: 1 });
 /** Reuses legacy expenserequests collection; category no longer written. */
 export const ReimbursementRequestSchema = new Schema(
   {
@@ -258,6 +281,16 @@ export const AuditLogSchema = new Schema(
 
 export const CounterSchema = new Schema({ _id: String, seq: { type: Number, default: 0 } });
 
+export const HolidaySchema = new Schema(
+  {
+    date: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    isActive: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+HolidaySchema.index({ date: 1, isActive: 1 });
+
 export const Department = models.Department || model("Department", DepartmentSchema);
 export const Shift = models.Shift || model("Shift", ShiftSchema);
 export const Employee = models.Employee || model("Employee", EmployeeSchema);
@@ -285,6 +318,7 @@ export const EmailLog = models.EmailLog || model("EmailLog", EmailLogSchema);
 export const PasswordResetToken = models.PasswordResetToken || model("PasswordResetToken", PasswordResetTokenSchema);
 export const AuditLog = models.AuditLog || model("AuditLog", AuditLogSchema);
 export const Counter = models.Counter || model("Counter", CounterSchema);
+export const Holiday = models.Holiday || model("Holiday", HolidaySchema);
 
 export const REQUEST_MODELS: Record<string, mongoose.Model<unknown>> = {
   punch: PunchRequest,

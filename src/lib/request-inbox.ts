@@ -19,7 +19,8 @@ export async function fetchInboxRows(statusFilter?: string): Promise<InboxRow[]>
   for (const type of REQUEST_TYPES) {
     const Model = REQUEST_MODELS[type];
     const filter: Record<string, unknown> = {};
-    if (statusFilter === "ATTENTION") {
+    if (statusFilter === "ATTENTION" || statusFilter === "PENDING") {
+      // Pending tab includes cancel requests awaiting HR
       filter.status = { $in: ["PENDING", "CANCELING"] };
     } else if (statusFilter && statusFilter !== "ALL") {
       filter.status = statusFilter;

@@ -74,3 +74,45 @@ export function useCreateAdminDocument() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "documents"] }),
   });
 }
+
+export interface Holiday {
+  _id: string;
+  date: string;
+  name: string;
+  isActive?: boolean;
+}
+
+export function useHolidaysAdmin() {
+  return useQuery({
+    queryKey: queryKeys.admin.holidays(),
+    queryFn: () => fetcher<Holiday[]>("/api/admin/holidays"),
+  });
+}
+
+export function useCreateHoliday() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Omit<Holiday, "_id">) =>
+      fetcher<Holiday>("/api/admin/holidays", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.admin.holidays() });
+      qc.invalidateQueries({ queryKey: ["holidays"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["hr-dashboard"] });
+    },
+  });
+}
+
+export function useDeleteHoliday() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetcher(`/api/admin/holidays/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.admin.holidays() });
+      qc.invalidateQueries({ queryKey: ["holidays"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["hr-dashboard"] });
+    },
+  });
+}

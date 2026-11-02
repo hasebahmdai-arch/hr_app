@@ -5,6 +5,7 @@ import { notify } from "@/lib/notifications";
 import { REQUEST_MODELS } from "@/lib/models";
 import { generateRequestCode } from "@/lib/request-code";
 import { handleRouteError, parsePagination } from "@/lib/route-utils";
+import { assertCanTake, countLeaveDays } from "@/lib/leave-balance";
 import { createRequestBodySchema, requestTypeSchema } from "@/lib/validations";
 import type { RequestType } from "@/lib/constants";
 import type { PaginatedResponse } from "@/types/api";
@@ -29,7 +30,11 @@ export async function GET(req: Request, { params }: { params: { type: string } }
       const employeeId = searchParams.get("employeeId");
       if (employeeId) filter.employeeId = employeeId;
     }
-    if (status) filter.status = status;
+    if (status === "PENDING") {
+      filter.status = { $in: ["PENDING", "CANCELING"] };
+    } else if (status) {
+      filter.status = status;
+    }
 
     await connectDB();
     const [items, total] = await Promise.all([
@@ -71,6 +76,18 @@ export async function POST(req: Request, { params }: { params: { type: string } 
     const Model = REQUEST_MODELS[type];
     const data = transformCreateData(type, parsed.data);
 
+    if (type === "leave") {
+      const { days } = await assertCanTake(
+        session.user.id,
+        String(data.leaveType ?? ""),
+        data.startDate as Date,
+        data.endDate as Date
+      );
+      data.daysRequested = days || countLeaveDays(data.startDate as Date, data.endDate as Date);
+      data.daysDeductedSoFar = 0;
+      data.deductedDates = [];
+    }
+
     const created = await Model.create({
       ...data,
       requestCode,
@@ -111,6 +128,8 @@ function transformCreateData(type: RequestType, data: Record<string, unknown>) {
 
 function serializeRequest(item: Record<string, unknown>) {
   const employee = item.employeeId as Record<string, unknown> | undefined;
+  const toIso = (v: unknown) =>
+    v instanceof Date ? v.toISOString() : typeof v === "string" ? v : v;
   return {
     ...item,
     _id: (item._id as { toString(): string }).toString(),
@@ -125,6 +144,8 @@ function serializeRequest(item: Record<string, unknown>) {
           employeeCode: employee.employeeCode,
         }
       : undefined,
+    startDate: toIso(item.startDate),
+    endDate: toIso(item.endDate),
     createdAt: (item.createdAt as Date)?.toISOString?.() ?? item.createdAt,
     reviewedAt: (item.reviewedAt as Date)?.toISOString?.() ?? item.reviewedAt,
   };

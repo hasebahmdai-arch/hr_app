@@ -18,3 +18,7 @@
 # Midnight Asia/Karachi (UTC+5) ≈ 19:00 UTC
 [functions."scheduled-auto-checkout"]
   schedule = "0 19 * * *"
+
+# Leave day deduct shortly after midnight company TZ
+[functions."scheduled-leave-deduct"]
+  schedule = "15 19 * * *"

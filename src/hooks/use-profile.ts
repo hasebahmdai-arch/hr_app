@@ -31,7 +31,7 @@ export function useUpdateProfile(employeeId?: string) {
   const resolvedId = employeeId || session?.user?.id;
 
   return useMutation({
-    mutationFn: (body: Partial<Employee>) => {
+    mutationFn: (body: Partial<Employee> & Record<string, unknown>) => {
       if (!resolvedId) throw new Error("Not signed in");
       return fetcher<Employee>(`/api/employees/${resolvedId}`, {
         method: "PATCH",

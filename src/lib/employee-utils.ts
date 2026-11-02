@@ -15,6 +15,13 @@ import {
   FileMetadata,
 } from "@/lib/models";
 import { generateEmployeeCode } from "@/lib/employee-code";
+import {
+  defaultLeaveBalancesForCreate,
+  ensureYearBalances,
+  ensureYearBalancesOnDoc,
+  summarizeBalances,
+  type LeaveBalanceRow,
+} from "@/lib/leave-balance";
 import { calculateProfileCompletion } from "@/lib/profile-utils";
 import { deleteFileMetadata } from "@/lib/files";
 import type { ProfileResponse } from "@/types/api";
@@ -77,6 +84,21 @@ export interface CreateEmployeeInput {
   shiftId?: string;
   hireDate?: string;
   dateOfBirth?: string;
+  nationalId?: string;
+  gender?: string;
+  bloodGroup?: string;
+  phone?: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  personalPhone?: string;
+  bankName?: string;
+  iban?: string;
+  branchCode?: string;
+  employmentInfo?: Record<string, unknown>;
+  qualifications?: { degree: string; institution: string; year?: number }[];
+  relatives?: { name: string; relationship: string; phone?: string; isDependent?: boolean }[];
+  sickLeaveDays?: number;
+  casualLeaveDays?: number;
 }
 
 export async function createEmployee(input: CreateEmployeeInput) {
@@ -97,6 +119,7 @@ export async function createEmployee(input: CreateEmployeeInput) {
   const plainPassword = input.password || randomBytes(24).toString("hex");
   const passwordHash = await bcrypt.hash(plainPassword, 10);
   const employeeCode = await generateEmployeeCode();
+  const year = new Date().getFullYear();
 
   const employee = await Employee.create({
     employeeCode,
@@ -109,7 +132,27 @@ export async function createEmployee(input: CreateEmployeeInput) {
     departmentId: input.departmentId || undefined,
     shiftId: input.shiftId || undefined,
     hireDate: input.hireDate ? new Date(input.hireDate) : new Date(),
-    personalInfo: input.dateOfBirth ? { dateOfBirth: input.dateOfBirth } : {},
+    personalInfo: {
+      dateOfBirth: input.dateOfBirth,
+      nationalId: input.nationalId,
+      gender: input.gender,
+      bloodGroup: input.bloodGroup,
+      phone: input.phone,
+    },
+    contactInfo: {
+      currentAddress: input.currentAddress,
+      permanentAddress: input.permanentAddress,
+      personalPhone: input.personalPhone,
+    },
+    banks: {
+      bankName: input.bankName,
+      iban: input.iban,
+      branchCode: input.branchCode,
+    },
+    employmentInfo: input.employmentInfo ?? {},
+    qualifications: input.qualifications ?? [],
+    relatives: input.relatives ?? [],
+    leaveBalances: defaultLeaveBalancesForCreate(input.sickLeaveDays, input.casualLeaveDays, year),
     accountActive: true,
   });
 
@@ -149,6 +192,8 @@ export async function resolveSessionEmployeeId(sessionUser: {
 
 export async function buildProfileResponse(employeeId: string): Promise<ProfileResponse> {
   await connectDB();
+  const year = new Date().getFullYear();
+  const balances = await ensureYearBalances(employeeId, year);
   const employee = await Employee.findById(employeeId).lean();
   if (!employee) throw new Error("NOT_FOUND");
 
@@ -163,6 +208,7 @@ export async function buildProfileResponse(employeeId: string): Promise<ProfileR
 
   return {
     employee: serializeEmployee(employee) as ProfileResponse["employee"],
+    leaveBalances: summarizeBalances(balances, year),
     assets: assets.map((a) => ({ ...a, _id: a._id.toString(), employeeId: a.employeeId?.toString() })),
     documents: documents.map((d) => ({
       _id: d._id.toString(),
@@ -230,6 +276,23 @@ export async function updateEmployeeProfile(
     if (updates[field] !== undefined) {
       (employee as Record<string, unknown>)[field] = updates[field];
     }
+  }
+
+  if (updates.sickLeaveDays !== undefined || updates.casualLeaveDays !== undefined) {
+    const year = new Date().getFullYear();
+    const next = ensureYearBalancesOnDoc(
+      (employee.leaveBalances ?? []) as LeaveBalanceRow[],
+      year
+    );
+    if (updates.sickLeaveDays !== undefined) {
+      const row = next.find((b) => b.leaveType === "Sick" && b.year === year)!;
+      row.entitled = Number(updates.sickLeaveDays);
+    }
+    if (updates.casualLeaveDays !== undefined) {
+      const row = next.find((b) => b.leaveType === "Casual" && b.year === year)!;
+      row.entitled = Number(updates.casualLeaveDays);
+    }
+    employee.leaveBalances = next as never;
   }
 
   employee.profileCompletionPct = calculateProfileCompletion(employee.toObject());

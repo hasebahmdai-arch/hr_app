@@ -18,6 +18,17 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+export interface AttendanceStatTiles {
+  absents: number;
+  late: number;
+  missedCheckouts: number;
+  weekendWork: number;
+  holidayWork: number;
+  present: number;
+  onLeave: number;
+  attendancePct: number;
+}
+
 export interface DashboardAttendanceResponse {
   month: string;
   attendancePct: number;
@@ -31,6 +42,15 @@ export interface DashboardAttendanceResponse {
   };
   statusCounters: Record<string, number>;
   anomalyCounters: Record<string, number>;
+  statTiles: AttendanceStatTiles;
+  holidays: { date: string; name: string }[];
+  leaveBalances?: {
+    leaveType: string;
+    year: number;
+    entitled: number;
+    used: number;
+    remaining: number;
+  }[];
   trends: { date: string; checkInMinutes: number | null }[];
   todayRecord?: {
     checkIn?: string;
@@ -95,6 +115,8 @@ export interface HrDashboardOverview {
   onBreakToday: number;
   pendingApprovals: number;
   avgAttendancePct: number;
+  statTiles: AttendanceStatTiles;
+  holidays: { date: string; name: string }[];
 }
 
 export interface HrEmployeeAttendanceRow {
@@ -174,6 +196,13 @@ export interface PendingApprovalsResponse {
 
 export interface ProfileResponse {
   employee: import("./domain").Employee;
+  leaveBalances?: {
+    leaveType: string;
+    year: number;
+    entitled: number;
+    used: number;
+    remaining: number;
+  }[];
   assets: unknown[];
   documents: unknown[];
   departments: { _id: string; name: string }[];

@@ -42,6 +42,7 @@ export const MOBILE_NAV: {
 export const ADMIN_NAV = [
   { href: "/app/admin/departments", label: "Departments" },
   { href: "/app/admin/shifts", label: "Shifts" },
+  { href: "/app/admin/holidays", label: "Holidays" },
   { href: "/app/admin/documents", label: "Documents" },
   { href: "/app/admin/announcements", label: "Announcements" },
 ] as const;

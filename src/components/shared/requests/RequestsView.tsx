@@ -6,7 +6,6 @@ import { useSession } from "next-auth/react";
 import { Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { useRequests, useCreateRequest, useRequestAction } from "@/hooks/use-requests";
-import { REQUEST_STATUSES } from "@/lib/constants";
 import type { RequestType } from "@/lib/constants";
 import { REQUEST_LABELS } from "@/lib/navigation";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
@@ -17,6 +16,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useQuery } from "@tanstack/react-query";
+import { fetcher } from "@/lib/fetcher";
+
+const REQUEST_TABS = [
+  { value: "PENDING", label: "Pending" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "REJECTED", label: "Rejected" },
+] as const;
 
 interface RequestsViewProps {
   type: RequestType;
@@ -35,7 +42,8 @@ export function RequestsView({ type }: RequestsViewProps) {
   const searchParams = useSearchParams();
   const isHR = session?.user?.role === "hr";
   const urlStatus = searchParams.get("status");
-  const [status, setStatus] = useState(urlStatus && REQUEST_STATUSES.includes(urlStatus as typeof REQUEST_STATUSES[number]) ? urlStatus : "ALL");
+  const initialTab = REQUEST_TABS.some((t) => t.value === urlStatus) ? urlStatus! : "PENDING";
+  const [status, setStatus] = useState(initialTab);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [formError, setFormError] = useState("");
@@ -47,7 +55,7 @@ export function RequestsView({ type }: RequestsViewProps) {
   const [wfhDates, setWfhDates] = useState<string[]>([todayIso()]);
 
   useEffect(() => {
-    if (urlStatus && REQUEST_STATUSES.includes(urlStatus as typeof REQUEST_STATUSES[number])) {
+    if (urlStatus && REQUEST_TABS.some((t) => t.value === urlStatus)) {
       setStatus(urlStatus);
       setPage(1);
     }
@@ -116,8 +124,9 @@ export function RequestsView({ type }: RequestsViewProps) {
 
       <Tabs value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
         <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="ALL">All</TabsTrigger>
-          {REQUEST_STATUSES.map((s) => <TabsTrigger key={s} value={s}>{s}</TabsTrigger>)}
+          {REQUEST_TABS.map((t) => (
+            <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
 
@@ -147,6 +156,17 @@ export function RequestsView({ type }: RequestsViewProps) {
                         Amount: {(req as unknown as { amount: number }).amount}
                         {(req as unknown as { reason?: string }).reason
                           ? ` · ${(req as unknown as { reason: string }).reason}`
+                          : ""}
+                      </p>
+                    )}
+                    {type === "leave" && (
+                      <p className="text-sm mt-1">
+                        {(req as unknown as { leaveType?: string }).leaveType ?? "Leave"}
+                        {(req as unknown as { startDate?: string }).startDate
+                          ? ` · ${format(new Date((req as unknown as { startDate: string }).startDate), "MMM d")}`
+                          : ""}
+                        {(req as unknown as { endDate?: string }).endDate
+                          ? ` – ${format(new Date((req as unknown as { endDate: string }).endDate), "MMM d, yyyy")}`
                           : ""}
                       </p>
                     )}
@@ -196,6 +216,7 @@ function defaultForm(type: RequestType): Record<string, string> {
   if (type === "punch") return { punchType: "check_in", requestedTimestamp: "", reason: "" };
   if (type === "loans") return { salaryCount: "1", purpose: "", reason: "" };
   if (type === "reimbursement") return { amount: "", reason: "" };
+  if (type === "leave") return { leaveType: "Casual", startDate: todayIso(), endDate: todayIso(), reason: "" };
   return { reason: "" };
 }
 
@@ -245,13 +266,7 @@ function CreateFormFields({
         </>
       );
     case "leave":
-      return (
-        <>
-          <div><Label>Leave Type</Label><Input value={form.leaveType ?? ""} onChange={(e) => set("leaveType", e.target.value)} required /></div>
-          <div><Label>Start Date</Label><Input type="date" min={today} value={form.startDate ?? ""} onChange={(e) => set("startDate", e.target.value)} required /></div>
-          <div><Label>End Date</Label><Input type="date" min={form.startDate || today} value={form.endDate ?? ""} onChange={(e) => set("endDate", e.target.value)} required /></div>
-        </>
-      );
+      return <LeaveFormFields form={form} set={set} today={today} />;
     case "reimbursement":
       return (
         <div>
@@ -321,6 +336,55 @@ function CreateFormFields({
     default:
       return null;
   }
+}
+
+function LeaveFormFields({
+  form,
+  set,
+  today,
+}: {
+  form: Record<string, string>;
+  set: (k: string, v: string) => void;
+  today: string;
+}) {
+  const { data } = useQuery({
+    queryKey: ["leave-balances", "me"],
+    queryFn: () =>
+      fetcher<{
+        balances: { leaveType: string; remaining: number; available: number; entitled: number }[];
+      }>("/api/leave-balances/me"),
+  });
+  const selected = data?.balances.find((b) => b.leaveType === (form.leaveType || "Casual"));
+
+  return (
+    <>
+      <div>
+        <Label>Leave Type</Label>
+        <select
+          className="w-full h-10 rounded-md border px-3 text-sm"
+          value={form.leaveType ?? "Casual"}
+          onChange={(e) => set("leaveType", e.target.value)}
+          required
+        >
+          <option value="Sick">Sick</option>
+          <option value="Casual">Casual</option>
+        </select>
+        {selected && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Available: {selected.available} of {selected.entitled} days
+          </p>
+        )}
+      </div>
+      <div>
+        <Label>Start Date</Label>
+        <Input type="date" min={today} value={form.startDate ?? ""} onChange={(e) => set("startDate", e.target.value)} required />
+      </div>
+      <div>
+        <Label>End Date</Label>
+        <Input type="date" min={form.startDate || today} value={form.endDate ?? ""} onChange={(e) => set("endDate", e.target.value)} required />
+      </div>
+    </>
+  );
 }
 
 function buildCreateBody(

@@ -32,6 +32,18 @@ const emptyForm = {
   shiftId: "",
   hireDate: "",
   dateOfBirth: "",
+  nationalId: "",
+  gender: "",
+  bloodGroup: "",
+  phone: "",
+  currentAddress: "",
+  permanentAddress: "",
+  personalPhone: "",
+  bankName: "",
+  iban: "",
+  branchCode: "",
+  sickLeaveDays: "8",
+  casualLeaveDays: "10",
 };
 
 export default function PeoplePageClient() {
@@ -66,6 +78,18 @@ export default function PeoplePageClient() {
         shiftId: form.shiftId || undefined,
         hireDate: form.hireDate,
         dateOfBirth: form.dateOfBirth,
+        nationalId: form.nationalId || undefined,
+        gender: form.gender || undefined,
+        bloodGroup: form.bloodGroup || undefined,
+        phone: form.phone || undefined,
+        currentAddress: form.currentAddress || undefined,
+        permanentAddress: form.permanentAddress || undefined,
+        personalPhone: form.personalPhone || undefined,
+        bankName: form.bankName || undefined,
+        iban: form.iban || undefined,
+        branchCode: form.branchCode || undefined,
+        sickLeaveDays: Number(form.sickLeaveDays),
+        casualLeaveDays: Number(form.casualLeaveDays),
       });
       setOpen(false);
       setForm(emptyForm);
@@ -86,7 +110,7 @@ export default function PeoplePageClient() {
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="h-4 w-4 mr-1" />Add User</Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
               <DialogHeader><DialogTitle>New User</DialogTitle></DialogHeader>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -116,13 +140,50 @@ export default function PeoplePageClient() {
                     {shifts?.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
                   </select>
                 </div>
-                <div>
-                  <Label>Date of Birth</Label>
-                  <Input type="date" max={today} value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} required />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Date of Birth</Label>
+                    <Input type="date" max={today} value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} required />
+                  </div>
+                  <div>
+                    <Label>Date of Joining</Label>
+                    <Input type="date" max={today} value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} required />
+                  </div>
                 </div>
-                <div>
-                  <Label>Date of Joining</Label>
-                  <Input type="date" max={today} value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} required />
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>National ID</Label><Input value={form.nationalId} onChange={(e) => setForm({ ...form, nationalId: e.target.value })} /></div>
+                  <div>
+                    <Label>Gender</Label>
+                    <select
+                      className="w-full h-10 rounded-md border px-3 text-sm"
+                      value={form.gender}
+                      onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                    >
+                      <option value="">Select</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                  <div><Label>Blood Group</Label><Input value={form.bloodGroup} onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })} /></div>
+                  <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                </div>
+                <div><Label>Current Address</Label><Input value={form.currentAddress} onChange={(e) => setForm({ ...form, currentAddress: e.target.value })} /></div>
+                <div><Label>Permanent Address</Label><Input value={form.permanentAddress} onChange={(e) => setForm({ ...form, permanentAddress: e.target.value })} /></div>
+                <div><Label>Personal Phone</Label><Input value={form.personalPhone} onChange={(e) => setForm({ ...form, personalPhone: e.target.value })} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Bank Name</Label><Input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} /></div>
+                  <div><Label>Branch Code</Label><Input value={form.branchCode} onChange={(e) => setForm({ ...form, branchCode: e.target.value })} /></div>
+                </div>
+                <div><Label>IBAN</Label><Input value={form.iban} onChange={(e) => setForm({ ...form, iban: e.target.value })} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Sick leave days</Label>
+                    <Input type="number" min={0} value={form.sickLeaveDays} onChange={(e) => setForm({ ...form, sickLeaveDays: e.target.value })} required />
+                  </div>
+                  <div>
+                    <Label>Casual leave days</Label>
+                    <Input type="number" min={0} value={form.casualLeaveDays} onChange={(e) => setForm({ ...form, casualLeaveDays: e.target.value })} required />
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   The employee will receive an email with a link to set their password. HR cannot set passwords.

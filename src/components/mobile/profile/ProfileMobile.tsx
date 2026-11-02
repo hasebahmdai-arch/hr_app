@@ -27,13 +27,19 @@ interface ProfileMobileProps {
   employeeId: string;
   isHREditor: boolean;
   canManageDocuments?: boolean;
-  onSave: (body: Partial<Employee>) => Promise<unknown>;
+  onSave: (body: Partial<Employee> & Record<string, unknown>) => Promise<unknown>;
   saving: boolean;
 }
 
 export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocuments = false, onSave, saving }: ProfileMobileProps) {
   const router = useRouter();
   const [form, setForm] = useState(profile.employee);
+  const [sickLeaveDays, setSickLeaveDays] = useState(
+    profile.leaveBalances?.find((b) => b.leaveType === "Sick")?.entitled ?? 8
+  );
+  const [casualLeaveDays, setCasualLeaveDays] = useState(
+    profile.leaveBalances?.find((b) => b.leaveType === "Casual")?.entitled ?? 10
+  );
   const [inviteMessage, setInviteMessage] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -121,6 +127,19 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
               <div><Label>Last Name</Label><Input value={form.lastName} onChange={(e) => updateField("lastName", e.target.value)} disabled={readOnly} /></div>
               <div><Label>Phone</Label><Input value={form.personalInfo?.phone ?? ""} onChange={(e) => updateNested("personalInfo", "phone", e.target.value)} disabled={readOnly} /></div>
               <div><Label>Date of Birth</Label><Input type="date" value={form.personalInfo?.dateOfBirth?.slice(0, 10) ?? ""} onChange={(e) => updateNested("personalInfo", "dateOfBirth", e.target.value)} disabled={readOnly} /></div>
+              <div>
+                <Label>Gender</Label>
+                <select
+                  className="w-full h-10 rounded-md border px-3 text-sm"
+                  value={form.personalInfo?.gender ?? ""}
+                  onChange={(e) => updateNested("personalInfo", "gender", e.target.value)}
+                  disabled={readOnly}
+                >
+                  <option value="">Select</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
               {isHREditor && <ImageUpload onUploaded={(id) => updateField("avatarFileId", id)} />}
             </CardContent></Card>
           </AccordionContent>
@@ -159,6 +178,34 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
                 <div><Label>Hire Date</Label><Input type="date" value={form.hireDate?.slice(0, 10) ?? ""} onChange={(e) => updateField("hireDate", e.target.value)} /></div>
               )}
             </CardContent></Card>
+            <Card className="mt-3">
+              <CardHeader className="pb-2"><CardTitle className="text-base">Leave balances</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {(profile.leaveBalances ?? []).map((b) => (
+                  <div key={b.leaveType} className="rounded-lg border p-3">
+                    <p className="font-medium text-sm">{b.leaveType}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Entitled {b.entitled} · Used {b.used} · Remaining {b.remaining}
+                    </p>
+                    {isHREditor && (
+                      <div className="mt-2">
+                        <Label>Entitled days</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={b.leaveType === "Sick" ? sickLeaveDays : casualLeaveDays}
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            if (b.leaveType === "Sick") setSickLeaveDays(n);
+                            else setCasualLeaveDays(n);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </AccordionContent>
         </AccordionItem>
 
@@ -177,7 +224,17 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
       </Accordion>
 
       {isHREditor && (
-        <Button className="w-full min-h-[44px]" onClick={() => onSave(form)} disabled={saving}>
+        <Button
+          className="w-full min-h-[44px]"
+          onClick={() =>
+            onSave({
+              ...form,
+              sickLeaveDays,
+              casualLeaveDays,
+            })
+          }
+          disabled={saving}
+        >
           {saving ? "Saving..." : "Save Changes"}
         </Button>
       )}

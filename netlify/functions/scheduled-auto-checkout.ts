@@ -8,7 +8,7 @@ export const handler = async (event: {
 
   try {
     const { autoCheckoutForgottenSessions } = await import("../../src/lib/timesheet-auto-checkout");
-    const result = await autoCheckoutForgottenSessions();
+    const result = await autoCheckoutForgottenSessions(undefined, { lookbackDays: null });
     return { statusCode: 200, body: JSON.stringify({ ok: true, ...result }) };
   } catch (error) {
     return {

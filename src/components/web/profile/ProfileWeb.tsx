@@ -27,13 +27,19 @@ interface ProfileWebProps {
   employeeId: string;
   isHREditor: boolean;
   canManageDocuments?: boolean;
-  onSave: (body: Partial<Employee>) => Promise<unknown>;
+  onSave: (body: Partial<Employee> & Record<string, unknown>) => Promise<unknown>;
   saving: boolean;
 }
 
 export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments = false, onSave, saving }: ProfileWebProps) {
   const router = useRouter();
   const [form, setForm] = useState(profile.employee);
+  const [sickLeaveDays, setSickLeaveDays] = useState(
+    profile.leaveBalances?.find((b) => b.leaveType === "Sick")?.entitled ?? 8
+  );
+  const [casualLeaveDays, setCasualLeaveDays] = useState(
+    profile.leaveBalances?.find((b) => b.leaveType === "Casual")?.entitled ?? 10
+  );
   const [inviteMessage, setInviteMessage] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -140,6 +146,19 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
               <div><Label>Last Name</Label><Input value={form.lastName} onChange={(e) => updateField("lastName", e.target.value)} disabled={readOnly} /></div>
               <div><Label>Phone</Label><Input value={form.personalInfo?.phone ?? ""} onChange={(e) => updateNested("personalInfo", "phone", e.target.value)} disabled={readOnly} /></div>
               <div><Label>Date of Birth</Label><Input type="date" value={form.personalInfo?.dateOfBirth?.slice(0, 10) ?? ""} onChange={(e) => updateNested("personalInfo", "dateOfBirth", e.target.value)} disabled={readOnly} /></div>
+              <div>
+                <Label>Gender</Label>
+                <select
+                  className="w-full h-10 rounded-md border px-3 text-sm"
+                  value={form.personalInfo?.gender ?? ""}
+                  onChange={(e) => updateNested("personalInfo", "gender", e.target.value)}
+                  disabled={readOnly}
+                >
+                  <option value="">Select</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
               {isHREditor && (
                 <div className="col-span-2">
                   <Label>Avatar</Label>
@@ -185,6 +204,39 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
               )}
             </CardContent>
           </Card>
+          <Card className="mt-4">
+            <CardHeader><CardTitle>Leave balances</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4">
+              {(profile.leaveBalances ?? []).map((b) => (
+                <div key={b.leaveType} className="rounded-lg border p-3">
+                  <p className="font-medium text-sm">{b.leaveType}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Used {b.used} · Remaining {b.remaining}
+                  </p>
+                  {isHREditor ? (
+                    <div className="mt-2">
+                      <Label>Entitled days</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={b.leaveType === "Sick" ? sickLeaveDays : casualLeaveDays}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          if (b.leaveType === "Sick") setSickLeaveDays(n);
+                          else setCasualLeaveDays(n);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-sm mt-1">Entitled {b.entitled}</p>
+                  )}
+                </div>
+              ))}
+              {!profile.leaveBalances?.length && (
+                <p className="text-sm text-muted-foreground col-span-2">No leave balances yet</p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="documents">
@@ -202,7 +254,18 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
       </Tabs>
 
       {isHREditor && (
-        <Button onClick={() => onSave(form)} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</Button>
+        <Button
+          onClick={() =>
+            onSave({
+              ...form,
+              sickLeaveDays,
+              casualLeaveDays,
+            })
+          }
+          disabled={saving}
+        >
+          {saving ? "Saving..." : "Save Changes"}
+        </Button>
       )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

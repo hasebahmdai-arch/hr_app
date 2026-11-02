@@ -15,10 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const STATUS_TABS = [
-  { value: "ATTENTION", label: "Needs attention" },
-  { value: "ALL", label: "All" },
   { value: "PENDING", label: "Pending" },
-  { value: "CANCELING", label: "Canceling" },
   { value: "COMPLETED", label: "Completed" },
   { value: "REJECTED", label: "Rejected" },
 ];
@@ -44,14 +41,18 @@ function InboxRowActions({ type, id, status }: { type: RequestType; id: string; 
 
 export function UnifiedRequestsInbox() {
   const searchParams = useSearchParams();
-  const initialStatus = searchParams.get("status") === "CANCELING" ? "CANCELING" : searchParams.get("status") === "PENDING" ? "ATTENTION" : "ATTENTION";
+  const urlStatus = searchParams.get("status");
+  const initialStatus =
+    urlStatus === "COMPLETED" || urlStatus === "REJECTED" || urlStatus === "PENDING"
+      ? urlStatus
+      : "PENDING";
   const [status, setStatus] = useState(initialStatus);
   const [page, setPage] = useState(1);
   const { data, isLoading, isError, refetch } = useRequestInbox(status, page);
 
   useEffect(() => {
     const s = searchParams.get("status");
-    if (s === "PENDING" || s === "CANCELING") setStatus(s === "CANCELING" ? "CANCELING" : "ATTENTION");
+    if (s === "PENDING" || s === "COMPLETED" || s === "REJECTED") setStatus(s);
   }, [searchParams]);
 
   return (

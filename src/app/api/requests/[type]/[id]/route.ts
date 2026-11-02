@@ -9,6 +9,8 @@ import {
   isAttendanceRequestType,
   revertRequestEffect,
 } from "@/lib/request-effects";
+import { assertCanTake, countLeaveDays } from "@/lib/leave-balance";
+import { processLeaveDeductionsForEmployee, revertLeaveDeductions } from "@/lib/leave-deduct";
 import { handleRouteError } from "@/lib/route-utils";
 import { requestActionSchema, requestTypeSchema } from "@/lib/validations";
 import type { RequestType } from "@/lib/constants";
@@ -87,13 +89,36 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
     if (parsed.data.action === "approve") {
       try {
         if (previousStatus === "PENDING" && !doc.effectAppliedAt && isAttendanceRequestType(requestType)) {
-          const snapshot = await applyRequestEffect(requestType, doc);
-          if (snapshot) {
-            doc.effectSnapshot = snapshot;
+          if (requestType === "leave") {
+            const start = new Date(doc.startDate as Date);
+            const end = new Date(doc.endDate as Date);
+            const { days } = await assertCanTake(
+              doc.employeeId.toString(),
+              String(doc.leaveType ?? ""),
+              start,
+              end,
+              doc._id.toString()
+            );
+            doc.daysRequested = days || countLeaveDays(start, end);
+            doc.daysDeductedSoFar = 0;
+            doc.deductedDates = [];
             doc.effectAppliedAt = new Date();
+            doc.effectSnapshot = { dates: [] };
+          } else {
+            const snapshot = await applyRequestEffect(requestType, doc);
+            if (snapshot) {
+              doc.effectSnapshot = snapshot;
+              doc.effectAppliedAt = new Date();
+            }
           }
         } else if (previousStatus === "CANCELING" && doc.effectAppliedAt) {
-          await revertRequestEffect(requestType, doc);
+          if (requestType === "leave") {
+            await revertLeaveDeductions(doc as never);
+            doc.daysDeductedSoFar = 0;
+            doc.deductedDates = [];
+          } else {
+            await revertRequestEffect(requestType, doc);
+          }
           doc.effectSnapshot = undefined;
           doc.effectAppliedAt = undefined;
         }
@@ -109,6 +134,15 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
       doc.reviewedAt = new Date();
     }
     await doc.save();
+
+    if (
+      parsed.data.action === "approve" &&
+      requestType === "leave" &&
+      previousStatus === "PENDING" &&
+      newStatus === "COMPLETED"
+    ) {
+      await processLeaveDeductionsForEmployee(doc.employeeId.toString());
+    }
 
     await writeAuditLog({
       entityType: `${requestType}_request`,

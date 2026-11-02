@@ -150,6 +150,8 @@ export function formatTimeDisplay(date?: Date | null) {
   return format(date, "h:mm a");
 }
 
+const LATE_GRACE_MINUTES = 30;
+
 export function computeCheckinStatus(
   checkIn: Date,
   shiftStart?: string | null
@@ -161,7 +163,7 @@ export function computeCheckinStatus(
   const zoned = toZonedTime(checkIn, companyTimezone());
   const checkMinutes = zoned.getHours() * 60 + zoned.getMinutes();
   const shiftMinutes = sh * 60 + sm;
-  return checkMinutes > shiftMinutes ? "Late" : "On Time";
+  return checkMinutes > shiftMinutes + LATE_GRACE_MINUTES ? "Late" : "On Time";
 }
 
 const NON_ABSENT_CODES = new Set(["L", "SL", "W", "H", "D", "O", "T"]);

@@ -14,6 +14,18 @@ export interface CreateEmployeeInput {
   shiftId?: string;
   hireDate: string;
   dateOfBirth: string;
+  nationalId?: string;
+  gender?: string;
+  bloodGroup?: string;
+  phone?: string;
+  currentAddress?: string;
+  permanentAddress?: string;
+  personalPhone?: string;
+  bankName?: string;
+  iban?: string;
+  branchCode?: string;
+  sickLeaveDays?: number;
+  casualLeaveDays?: number;
 }
 
 export interface CreateEmployeeResponse {

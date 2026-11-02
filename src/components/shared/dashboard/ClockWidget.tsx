@@ -198,29 +198,29 @@ export function ClockWidget() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
+              <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
                 {session?.isLate ? (
-                  <div className="rounded-lg bg-background/80 p-3 text-center border border-border/40">
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Late check-in</p>
-                    <p className="text-sm font-semibold mt-1 text-warning">Yes</p>
+                  <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Late check-in</p>
+                    <p className="text-sm font-semibold text-warning">Yes</p>
                   </div>
                 ) : (
                   <>
-                    <div className="rounded-lg bg-background/80 p-3 text-center border border-border/40">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Check-in</p>
-                      <p className="text-sm font-semibold mt-1">
+                    <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Check-in</p>
+                      <p className="text-sm font-semibold">
                         {session?.checkInDisplay ?? "—"}
                       </p>
                     </div>
-                    <div className="rounded-lg bg-background/80 p-3 text-center border border-border/40">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Break time</p>
-                      <p className="text-sm font-semibold mt-1 tabular-nums">{formatDuration(breakSeconds)}</p>
+                    <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Break time</p>
+                      <p className="text-sm font-semibold tabular-nums">{formatDuration(breakSeconds)}</p>
                     </div>
                   </>
                 )}
-                <div className="rounded-lg bg-background/80 p-3 text-center border border-border/40">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Work hours</p>
-                  <p className="text-sm font-semibold mt-1 tabular-nums text-primary">{formatDuration(businessSeconds)}</p>
+                <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Work hours</p>
+                  <p className="text-sm font-semibold tabular-nums text-primary">{formatDuration(businessSeconds)}</p>
                 </div>
               </div>
             </div>

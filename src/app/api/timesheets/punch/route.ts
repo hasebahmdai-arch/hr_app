@@ -4,6 +4,9 @@ import connectDB from "@/lib/db";
 import { Employee, PunchEvent, Timesheet } from "@/lib/models";
 import { shiftToMinutes } from "@/lib/profile-utils";
 import { handleRouteError } from "@/lib/route-utils";
+import { isHoliday } from "@/lib/holidays";
+import { isWeekendDate } from "@/lib/attendance-stats";
+import { processLeaveDeductionsForEmployee } from "@/lib/leave-deduct";
 import {
   autoCheckoutForgottenSessions,
   todayInCompanyTz,
@@ -72,6 +75,7 @@ export async function POST(req: Request) {
 
     await connectDB();
     await autoCheckoutForgottenSessions(session.user.id);
+    await processLeaveDeductionsForEmployee(session.user.id);
 
     const today = todayInCompanyTz();
     const now = new Date();
@@ -111,13 +115,20 @@ export async function POST(req: Request) {
       };
       sessions.push(newSession);
 
+      const holidayWork = isFirstOfDay ? await isHoliday(today) : false;
+      const weekendWork = isFirstOfDay ? isWeekendDate(today) : false;
+
       if (record) {
         record.expectedMinutes = expectedMinutes;
         record.source = "punch";
-        if (!record.statusCode || record.statusCode === "A") record.statusCode = "P";
+        if (!record.statusCode || record.statusCode === "A" || record.statusCode === "H" || record.statusCode === "L") {
+          record.statusCode = "P";
+        }
         if (isFirstOfDay) {
           record.checkinStatus = computeCheckinStatus(now, shift?.startTime);
           record.set("checkoutStatus", undefined);
+          record.isHolidayWork = holidayWork;
+          record.isWeekendWork = weekendWork;
         }
         applyDerived(record, sessions, now, expectedMinutes);
         await record.save();
@@ -130,6 +141,8 @@ export async function POST(req: Request) {
           source: "punch",
           statusCode: "P",
           checkinStatus: computeCheckinStatus(now, shift?.startTime),
+          isHolidayWork: holidayWork,
+          isWeekendWork: weekendWork,
           sessions,
           ...syncDerivedFields(sessions, now),
         });

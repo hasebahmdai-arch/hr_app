@@ -1,4 +1,4 @@
-import { format, parseISO } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import connectDB from "@/lib/db";
 import { PunchEvent, Timesheet } from "@/lib/models";
@@ -27,31 +27,49 @@ export function endOfDayInCompanyTz(dateStr: string) {
   return fromZonedTime(`${dateStr}T23:59:59.999`, companyTimezone());
 }
 
+const REQUEST_LOOKBACK_DAYS = 14;
+
 /**
  * Auto check-out any open sessions from previous days at local midnight
  * (end of that timesheet's date in COMPANY_TIMEZONE).
+ * Scoped by employeeId on request paths; global only from scheduled job.
  */
-export async function autoCheckoutForgottenSessions(employeeId?: string) {
+export async function autoCheckoutForgottenSessions(
+  employeeId?: string,
+  opts?: { lookbackDays?: number | null }
+) {
   await connectDB();
   const today = todayInCompanyTz();
-  const filter: Record<string, unknown> = { date: { $lt: today } };
+  const lookback =
+    opts?.lookbackDays === null
+      ? null
+      : opts?.lookbackDays ?? (employeeId ? REQUEST_LOOKBACK_DAYS : null);
+
+  const filter: Record<string, unknown> = {
+    date: { $lt: today },
+    $or: [
+      { checkIn: { $ne: null }, checkOut: null },
+      { "sessions.checkIn": { $exists: true }, "sessions.checkOut": null },
+    ],
+  };
+  if (lookback != null) {
+    const minDate = format(subDays(parseISO(today), lookback), "yyyy-MM-dd");
+    (filter.date as Record<string, string>).$gte = minDate;
+  }
   if (employeeId) filter.employeeId = employeeId;
 
   const candidates = await Timesheet.find(filter);
-  const open = candidates.filter((record) => {
-    const sessions = normalizeSessions(record.toObject());
-    if (getOpenSession(sessions)) return true;
-    return Boolean(record.checkIn && !record.checkOut);
-  });
   let closed = 0;
 
-  for (const record of open) {
-    const checkoutAt = endOfDayInCompanyTz(record.date);
+  for (const record of candidates) {
     const sessions = normalizeSessions(record.toObject());
     const openSession = getOpenSession(sessions);
+    const legacyOpen = Boolean(record.checkIn && !record.checkOut) && !openSession;
+    if (!openSession && !legacyOpen) continue;
+
+    const checkoutAt = endOfDayInCompanyTz(record.date);
 
     if (!openSession) {
-      // Legacy open checkOut without sessions
       if (record.checkIn && !record.checkOut) {
         if (checkoutAt.getTime() < new Date(record.checkIn).getTime()) continue;
         const breaks = (record.breaks as { startedAt: Date; endedAt?: Date }[]) ?? [];

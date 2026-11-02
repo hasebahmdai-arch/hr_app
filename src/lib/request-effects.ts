@@ -1,7 +1,9 @@
-import { eachDayOfInterval, format } from "date-fns";
+import { format } from "date-fns";
 import type { RequestType } from "@/lib/constants";
 import { Employee, Timesheet } from "@/lib/models";
 import { shiftToMinutes } from "@/lib/profile-utils";
+import { isHoliday } from "@/lib/holidays";
+import { isWeekendDate } from "@/lib/attendance-stats";
 
 export interface TimesheetSnapshot {
   date: string;
@@ -132,6 +134,8 @@ export async function applyRequestEffect(
       const isFirst = sessions.length === 0;
       sessions.push({ checkIn: punchAt, breaks: [] });
       const derived = syncDerivedFields(sessions, punchAt);
+      const holidayWork = await isHoliday(date);
+      const weekendWork = isWeekendDate(date);
       dates.push(
         await applyDateEffect(employeeId, date, {
           ...derived,
@@ -139,7 +143,11 @@ export async function applyRequestEffect(
           source: "manual",
           statusCode: "P",
           ...(isFirst
-            ? { checkinStatus: computeCheckinStatus(punchAt, shift?.startTime) }
+            ? {
+                checkinStatus: computeCheckinStatus(punchAt, shift?.startTime),
+                isHolidayWork: holidayWork,
+                isWeekendWork: weekendWork,
+              }
             : {}),
         }, shift)
       );
@@ -167,19 +175,8 @@ export async function applyRequestEffect(
   }
 
   if (type === "leave") {
-    const start = new Date(request.startDate as Date);
-    const end = new Date(request.endDate as Date);
-    for (const day of eachDayOfInterval({ start, end })) {
-      const date = format(day, "yyyy-MM-dd");
-      dates.push(
-        await applyDateEffect(employeeId, date, {
-          statusCode: "L",
-          source: "manual",
-          workedMinutes: 0,
-          shortMinutes: 0,
-        }, shift, ["checkIn", "checkOut", "checkinStatus", "checkoutStatus"])
-      );
-    }
+    // Leave days are marked L and deducted by cron / scoped catch-up, not on approve.
+    return { dates: [] };
   }
 
   if (type === "wfh") {

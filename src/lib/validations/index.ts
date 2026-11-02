@@ -82,6 +82,12 @@ export const pastDateSchema = isoDateSchema.refine(
   { message: "Date must be in the past" }
 );
 
+export const holidaySchema = z.object({
+  date: isoDateSchema,
+  name: z.string().min(1),
+  isActive: z.boolean().optional(),
+});
+
 export const createEmployeeSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -92,6 +98,38 @@ export const createEmployeeSchema = z.object({
   shiftId: z.string().optional(),
   hireDate: pastOrTodayDateSchema,
   dateOfBirth: pastDateSchema,
+  nationalId: z.string().optional(),
+  gender: z.string().optional(),
+  bloodGroup: z.string().optional(),
+  phone: z.string().optional(),
+  currentAddress: z.string().optional(),
+  permanentAddress: z.string().optional(),
+  personalPhone: z.string().optional(),
+  bankName: z.string().optional(),
+  iban: z.string().optional(),
+  branchCode: z.string().optional(),
+  employmentInfo: z.record(z.string(), z.unknown()).optional(),
+  qualifications: z
+    .array(
+      z.object({
+        degree: z.string().min(1),
+        institution: z.string().min(1),
+        year: z.number().int().optional(),
+      })
+    )
+    .optional(),
+  relatives: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        relationship: z.string().min(1),
+        phone: z.string().optional(),
+        isDependent: z.boolean().optional(),
+      })
+    )
+    .optional(),
+  sickLeaveDays: z.number().int().min(0).optional(),
+  casualLeaveDays: z.number().int().min(0).optional(),
 });
 
 export const notificationPatchSchema = z.object({
@@ -130,7 +168,7 @@ export function createRequestBodySchema(type: z.infer<typeof requestTypeSchema>)
     case "leave":
       return base
         .extend({
-          leaveType: z.string().min(1),
+          leaveType: z.enum(["Sick", "Casual"]),
           startDate: futureOrTodayDateSchema,
           endDate: futureOrTodayDateSchema,
         })

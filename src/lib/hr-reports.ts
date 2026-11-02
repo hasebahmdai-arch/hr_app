@@ -5,8 +5,10 @@ import {
   parse,
   startOfMonth,
 } from "date-fns";
+import { aggregateStatTiles, computeStatTiles } from "@/lib/attendance-stats";
 import connectDB from "@/lib/db";
 import { REQUEST_TYPES } from "@/lib/constants";
+import { getHolidayDatesInRange } from "@/lib/holidays";
 import {
   Department,
   Employee,
@@ -30,14 +32,29 @@ export async function getHrOverview(month: string): Promise<HrDashboardOverview>
   const dateTo = format(monthEnd, "yyyy-MM-dd");
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd }).length;
 
-  const employees = await Employee.find({ role: "employee", accountActive: true }).lean();
+  const employees = await Employee.find({ role: "employee", accountActive: true })
+    .select("_id hireDate")
+    .lean();
   const employeeIds = employees.map((e) => e._id);
 
-  const todaySheets = await Timesheet.find({
-    employeeId: { $in: employeeIds },
-    date: today,
-    checkIn: { $exists: true },
-  }).lean();
+  const [todaySheets, holidays, monthSheets] = await Promise.all([
+    Timesheet.find({
+      employeeId: { $in: employeeIds },
+      date: today,
+      checkIn: { $exists: true },
+    })
+      .select("checkIn checkOut breaks sessions")
+      .lean(),
+    getHolidayDatesInRange(dateFrom, dateTo),
+    Timesheet.find({
+      employeeId: { $in: employeeIds },
+      date: { $gte: dateFrom, $lte: dateTo },
+    })
+      .select(
+        "employeeId date statusCode checkIn sessions checkinStatus checkoutStatus isWeekendWork isHolidayWork"
+      )
+      .lean(),
+  ]);
 
   let onBreakToday = 0;
   let presentToday = 0;
@@ -46,6 +63,7 @@ export async function getHrOverview(month: string): Promise<HrDashboardOverview>
       checkIn: sheet.checkIn,
       checkOut: sheet.checkOut,
       breaks: sheet.breaks as { startedAt: Date; endedAt?: Date }[],
+      sessions: sheet.sessions as never,
     });
     if (state === "working" || state === "on_break" || state === "idle") presentToday++;
     if (state === "on_break") onBreakToday++;
@@ -56,17 +74,23 @@ export async function getHrOverview(month: string): Promise<HrDashboardOverview>
     pendingApprovals += await Model.countDocuments({ status: { $in: ["PENDING", "CANCELING"] } });
   }
 
-  const monthSheets = await Timesheet.find({
-    employeeId: { $in: employeeIds },
-    date: { $gte: dateFrom, $lte: dateTo },
-  }).lean();
-
+  const holidaySet = new Set(holidays.map((h) => h.date));
   const byEmployee = new Map<string, typeof monthSheets>();
   for (const s of monthSheets) {
     const id = s.employeeId.toString();
     if (!byEmployee.has(id)) byEmployee.set(id, []);
     byEmployee.get(id)!.push(s);
   }
+
+  const tiles = employees.map((emp) =>
+    computeStatTiles({
+      month,
+      records: (byEmployee.get(emp._id.toString()) ?? []) as never,
+      holidayDates: holidaySet,
+      hireDate: emp.hireDate,
+    })
+  );
+  const statTiles = aggregateStatTiles(tiles);
 
   let pctSum = 0;
   let pctCount = 0;
@@ -83,7 +107,12 @@ export async function getHrOverview(month: string): Promise<HrDashboardOverview>
     presentToday,
     onBreakToday,
     pendingApprovals,
-    avgAttendancePct: pctCount ? Math.round(pctSum / pctCount) : 0,
+    avgAttendancePct: pctCount ? Math.round(pctSum / pctCount) : statTiles.attendancePct,
+    statTiles: {
+      ...statTiles,
+      attendancePct: pctCount ? Math.round(pctSum / pctCount) : statTiles.attendancePct,
+    },
+    holidays,
   };
 }
 

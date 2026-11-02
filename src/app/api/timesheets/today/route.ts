@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import connectDB from "@/lib/db";
 import { Employee, Timesheet } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
+import { processLeaveDeductionsForEmployee } from "@/lib/leave-deduct";
 import {
   autoCheckoutForgottenSessions,
   todayInCompanyTz,
@@ -16,6 +17,7 @@ export async function GET() {
     const session = await requireSession();
     await connectDB();
     await autoCheckoutForgottenSessions(session.user.id);
+    await processLeaveDeductionsForEmployee(session.user.id);
 
     const today = todayInCompanyTz();
     const employee = await Employee.findById(session.user.id).populate("shiftId");
