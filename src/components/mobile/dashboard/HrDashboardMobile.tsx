@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { REQUEST_LABELS } from "@/lib/navigation";
 import type { RequestType } from "@/lib/constants";
+import { ClockWidget } from "@/components/shared/dashboard/ClockWidget";
 
 export function HrDashboardMobile() {
   const [month] = useState(format(new Date(), "yyyy-MM"));
@@ -28,6 +29,8 @@ export function HrDashboardMobile() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">HR Dashboard</h1>
       <p className="text-sm text-muted-foreground -mt-2">Team overview</p>
+
+      <ClockWidget />
 
       <QueryBoundary isLoading={isLoading} isError={isError} onRetry={refetchAll}>
         <div className="grid grid-cols-2 gap-3">

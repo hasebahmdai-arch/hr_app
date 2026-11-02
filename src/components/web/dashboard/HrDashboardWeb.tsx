@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { REQUEST_LABELS } from "@/lib/navigation";
 import type { RequestType } from "@/lib/constants";
+import { ClockWidget } from "@/components/shared/dashboard/ClockWidget";
 
 const ORANGE = "#F97316";
 const PIE_COLORS = ["#F97316", "#FB923C", "#FDBA74", "#16a34a", "#ef4444", "#6b7280"];
@@ -77,6 +78,8 @@ export function HrDashboardWeb() {
         subtitle="Team attendance, requests, and reports"
         action={<Button variant="outline" size="sm" onClick={() => refetchAll()}>Refresh</Button>}
       />
+
+      <ClockWidget />
 
       <QueryBoundary isLoading={isLoading} isError={isError} onRetry={refetchAll}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

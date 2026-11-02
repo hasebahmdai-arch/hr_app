@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { buildQuery, fetcher } from "@/lib/fetcher";
 import { queryKeys } from "@/lib/query-keys";
-import type { PaginatedResponse, TimesheetFilters, TodaySessionResponse } from "@/types/api";
+import type { PaginatedResponse, PunchEventItem, TimesheetFilters, TodaySessionResponse } from "@/types/api";
 import type { Timesheet } from "@/types/domain";
 
 export type PunchAction = "check_in" | "check_out" | "break_start" | "break_end";
@@ -13,6 +13,17 @@ export function useTimesheets(filters: TimesheetFilters) {
     queryKey: queryKeys.timesheets(filters),
     queryFn: () =>
       fetcher<PaginatedResponse<Timesheet>>(`/api/timesheets${buildQuery(filters as Record<string, string | number | undefined>)}`),
+  });
+}
+
+export function usePunchEvents(filters: { date?: string; employeeId?: string; dateFrom?: string; dateTo?: string; page?: number; limit?: number }, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.punchEvents(filters as Record<string, string | undefined>),
+    queryFn: () =>
+      fetcher<PaginatedResponse<PunchEventItem>>(
+        `/api/timesheets/punch-events${buildQuery(filters as Record<string, string | number | undefined>)}`
+      ),
+    enabled,
   });
 }
 
@@ -35,6 +46,7 @@ export function usePunchAction() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.todaySession() });
       qc.invalidateQueries({ queryKey: ["timesheets"] });
+      qc.invalidateQueries({ queryKey: ["punch-events"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });

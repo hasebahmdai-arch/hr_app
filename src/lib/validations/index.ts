@@ -143,38 +143,21 @@ export function createRequestBodySchema(type: z.infer<typeof requestTypeSchema>)
             });
           }
         });
-    case "expense":
+    case "reimbursement":
       return base.extend({
         amount: z.number().positive(),
-        category: z.string().min(1),
+        reason: z.string().min(1),
         receiptFileIds: z.array(z.string()).optional(),
       });
     case "loans":
       return base.extend({
-        amount: z.number().positive(),
+        salaryCount: z.number().int().min(1).max(3),
         purpose: z.string().min(1),
         repaymentPlan: z.string().optional(),
       });
     case "wfh":
       return base.extend({
         dates: nonemptyFutureDates(),
-      });
-    case "official-duty":
-      return base.extend({
-        location: z.string().min(1),
-        dates: nonemptyFutureDates(),
-      });
-    case "relaxation":
-      return base.extend({
-        date: pastOrTodayDateSchema,
-        type: z.string().min(1),
-        minutes: z.number().int().positive(),
-      });
-    case "travel":
-      return base.extend({
-        destination: z.string().min(1),
-        dates: nonemptyFutureDates(),
-        purpose: z.string().optional(),
       });
     default:
       return base;

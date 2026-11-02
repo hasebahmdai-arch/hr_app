@@ -1,7 +1,7 @@
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireSession } from "@/lib/auth";
 import connectDB from "@/lib/db";
-import { Employee, Timesheet } from "@/lib/models";
+import { Employee, PunchEvent, Timesheet } from "@/lib/models";
 import { shiftToMinutes } from "@/lib/profile-utils";
 import { handleRouteError } from "@/lib/route-utils";
 import {
@@ -10,12 +10,56 @@ import {
 } from "@/lib/timesheet-auto-checkout";
 import {
   buildTodaySession,
-  computeNetWorkedMinutes,
+  computeCheckinStatus,
+  computeNetWorkedFromSessions,
+  getClientIp,
   getOpenBreak,
+  getOpenSession,
+  normalizeSessions,
   sumBreakMinutes,
-  type TimesheetBreak,
+  syncDerivedFields,
+  type PunchActionType,
+  type WorkSession,
 } from "@/lib/timesheet-session";
 import { punchSchema } from "@/lib/validations";
+
+async function logPunchEvent(params: {
+  employeeId: string;
+  timesheetId: unknown;
+  date: string;
+  action: PunchActionType;
+  at: Date;
+  ip: string;
+  location?: { lat: number; lng: number };
+}) {
+  await PunchEvent.create({
+    employeeId: params.employeeId,
+    timesheetId: params.timesheetId,
+    date: params.date,
+    action: params.action,
+    at: params.at,
+    ip: params.ip,
+    location: params.location,
+  });
+}
+
+function applyDerived(record: InstanceType<typeof Timesheet>, sessions: WorkSession[], now: Date, expectedMinutes: number) {
+  const derived = syncDerivedFields(sessions, now);
+  record.sessions = sessions as never;
+  record.breaks = derived.breaks as never;
+  record.breakMinutes = derived.breakMinutes;
+  record.workedMinutes = derived.workedMinutes;
+  record.checkIn = derived.checkIn;
+  record.checkInLocation = derived.checkInLocation as never;
+  if (derived.checkOut) {
+    record.checkOut = derived.checkOut;
+    record.checkOutLocation = derived.checkOutLocation as never;
+    record.shortMinutes = Math.max(expectedMinutes - derived.workedMinutes, 0);
+  } else {
+    record.set("checkOut", undefined);
+    record.set("checkOutLocation", undefined);
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -27,11 +71,11 @@ export async function POST(req: Request) {
     }
 
     await connectDB();
-    // Close any previous-day open sessions at local midnight before punching today
     await autoCheckoutForgottenSessions(session.user.id);
 
     const today = todayInCompanyTz();
     const now = new Date();
+    const ip = getClientIp(req);
     const { action } = parsed.data;
     const location =
       parsed.data.lat !== undefined && parsed.data.lng !== undefined
@@ -51,79 +95,138 @@ export async function POST(req: Request) {
         : 480;
 
     let record = await Timesheet.findOne({ employeeId: session.user.id, date: today });
+    const sessions = normalizeSessions(record?.toObject() ?? null);
 
     if (action === "check_in") {
-      if (record?.checkIn) {
-        return apiError("Already checked in for today", "ALREADY_CHECKED_IN", 400);
+      if (getOpenSession(sessions)) {
+        return apiError("Already checked in — check out first", "ALREADY_CHECKED_IN", 400);
       }
 
+      const isFirstOfDay = sessions.length === 0;
+      const newSession: WorkSession = {
+        checkIn: now,
+        checkInLocation: location,
+        checkInIp: ip,
+        breaks: [],
+      };
+      sessions.push(newSession);
+
       if (record) {
-        // Existing row (e.g. leave marker) — update instead of create to avoid duplicate key
-        record.checkIn = now;
-        record.checkInLocation = location;
         record.expectedMinutes = expectedMinutes;
-        record.breakMinutes = 0;
-        record.breaks = [] as never;
         record.source = "punch";
-        record.statusCode = "P";
-        record.set("checkOut", undefined);
-        record.set("checkOutLocation", undefined);
+        if (!record.statusCode || record.statusCode === "A") record.statusCode = "P";
+        if (isFirstOfDay) {
+          record.checkinStatus = computeCheckinStatus(now, shift?.startTime);
+          record.set("checkoutStatus", undefined);
+        }
+        applyDerived(record, sessions, now, expectedMinutes);
         await record.save();
       } else {
         record = await Timesheet.create({
           employeeId: session.user.id,
           date: today,
           shiftId: shift?._id,
-          checkIn: now,
-          checkInLocation: location,
           expectedMinutes,
-          breakMinutes: 0,
-          breaks: [],
           source: "punch",
           statusCode: "P",
+          checkinStatus: computeCheckinStatus(now, shift?.startTime),
+          sessions,
+          ...syncDerivedFields(sessions, now),
         });
       }
+
+      await logPunchEvent({
+        employeeId: session.user.id,
+        timesheetId: record._id,
+        date: today,
+        action: "check_in",
+        at: now,
+        ip,
+        location,
+      });
+
       return apiSuccess({ action, session: buildTodaySession(record.toObject(), shift) });
     }
 
-    if (!record?.checkIn) {
+    if (!sessions.length) {
       return apiError("Check in first", "NOT_CHECKED_IN", 400);
     }
 
-    const breaks: TimesheetBreak[] = (record.breaks as TimesheetBreak[]) ?? [];
+    const openSession = getOpenSession(sessions);
+    if (!openSession) {
+      return apiError("Check in first to continue", "NOT_CHECKED_IN", 400);
+    }
+
+    if (!record) {
+      return apiError("Check in first", "NOT_CHECKED_IN", 400);
+    }
+
+    const breaks = openSession.breaks ?? [];
     const openBreak = getOpenBreak(breaks);
 
     if (action === "break_start") {
-      if (record.checkOut) return apiError("Already checked out", "ALREADY_PUNCHED_OUT", 400);
       if (openBreak) return apiError("Break already in progress", "BREAK_IN_PROGRESS", 400);
-      breaks.push({ startedAt: now });
-      record.breaks = breaks as never;
-      record.breakMinutes = sumBreakMinutes(breaks);
+      breaks.push({ startedAt: now, startIp: ip });
+      openSession.breaks = breaks;
+      applyDerived(record, sessions, now, expectedMinutes);
       await record.save();
+      await logPunchEvent({
+        employeeId: session.user.id,
+        timesheetId: record._id,
+        date: today,
+        action: "break_start",
+        at: now,
+        ip,
+        location,
+      });
       return apiSuccess({ action, session: buildTodaySession(record.toObject(), shift) });
     }
 
     if (action === "break_end") {
       if (!openBreak) return apiError("No break in progress", "NO_BREAK", 400);
       openBreak.endedAt = now;
-      record.breaks = breaks as never;
-      record.breakMinutes = sumBreakMinutes(breaks);
+      openBreak.endIp = ip;
+      openSession.breaks = breaks;
+      applyDerived(record, sessions, now, expectedMinutes);
       await record.save();
+      await logPunchEvent({
+        employeeId: session.user.id,
+        timesheetId: record._id,
+        date: today,
+        action: "break_end",
+        at: now,
+        ip,
+        location,
+      });
       return apiSuccess({ action, session: buildTodaySession(record.toObject(), shift) });
     }
 
     if (action === "check_out") {
-      if (record.checkOut) return apiError("Already checked out for today", "ALREADY_PUNCHED_OUT", 400);
       if (openBreak) {
         openBreak.endedAt = now;
-        record.breaks = breaks as never;
+        openBreak.endIp = ip;
+        openSession.breaks = breaks;
       }
-      record.checkOut = now;
-      record.checkOutLocation = location;
-      record.breakMinutes = sumBreakMinutes(breaks);
-      record.workedMinutes = computeNetWorkedMinutes(record.checkIn, record.checkOut);
+      openSession.checkOut = now;
+      openSession.checkOutLocation = location;
+      openSession.checkOutIp = ip;
+      applyDerived(record, sessions, now, expectedMinutes);
+      record.workedMinutes = computeNetWorkedFromSessions(sessions, now);
+      record.breakMinutes = sumBreakMinutes(
+        sessions.flatMap((s) => s.breaks ?? []),
+        now
+      );
       record.shortMinutes = Math.max(expectedMinutes - record.workedMinutes, 0);
       await record.save();
+      await logPunchEvent({
+        employeeId: session.user.id,
+        timesheetId: record._id,
+        date: today,
+        action: "check_out",
+        at: now,
+        ip,
+        location,
+      });
       return apiSuccess({ action, session: buildTodaySession(record.toObject(), shift) });
     }
 

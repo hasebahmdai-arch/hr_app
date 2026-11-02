@@ -1,5 +1,6 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/fetcher";
 import { queryKeys } from "@/lib/query-keys";
@@ -7,25 +8,39 @@ import type { ProfileResponse } from "@/types/api";
 import type { Employee } from "@/types/domain";
 
 export function useProfile(employeeId?: string) {
-  const isMe = !employeeId;
+  const { data: session, status } = useSession();
+  const selfId = session?.user?.id;
+  const isSelf = !employeeId;
+  // Self: use /api/dashboard/me (static route under a known-working prefix).
+  // Others: /api/employees/:id (HR).
+  const ready = isSelf ? status === "authenticated" && !!selfId : !!employeeId;
+
   return useQuery({
-    queryKey: queryKeys.profile(employeeId),
+    queryKey: queryKeys.profile(isSelf ? "self" : employeeId),
     queryFn: () =>
-      fetcher<ProfileResponse>(isMe ? "/api/employees/me" : `/api/employees/${employeeId}`),
+      fetcher<ProfileResponse>(
+        isSelf ? "/api/dashboard/me" : `/api/employees/${employeeId}`
+      ),
+    enabled: ready,
   });
 }
 
 export function useUpdateProfile(employeeId?: string) {
   const qc = useQueryClient();
-  const isMe = !employeeId;
+  const { data: session } = useSession();
+  const resolvedId = employeeId || session?.user?.id;
+
   return useMutation({
-    mutationFn: (body: Partial<Employee>) =>
-      fetcher<Employee>(isMe ? "/api/employees/me" : `/api/employees/${employeeId}`, {
+    mutationFn: (body: Partial<Employee>) => {
+      if (!resolvedId) throw new Error("Not signed in");
+      return fetcher<Employee>(`/api/employees/${resolvedId}`, {
         method: "PATCH",
         body: JSON.stringify(body),
-      }),
+      });
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId) });
+      qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId ? employeeId : "self") });
+      qc.invalidateQueries({ queryKey: queryKeys.profile() });
       qc.invalidateQueries({ queryKey: ["people"] });
     },
   });
@@ -41,6 +56,7 @@ export function useCreateEmployeeDocument(employeeId: string) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId) });
+      qc.invalidateQueries({ queryKey: queryKeys.profile("self") });
       qc.invalidateQueries({ queryKey: queryKeys.profile() });
     },
   });
@@ -55,6 +71,7 @@ export function useDeleteEmployeeDocument(employeeId: string) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId) });
+      qc.invalidateQueries({ queryKey: queryKeys.profile("self") });
       qc.invalidateQueries({ queryKey: queryKeys.profile() });
     },
   });

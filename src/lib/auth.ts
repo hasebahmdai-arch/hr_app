@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import connectDB from "@/lib/db";
 import { Employee } from "@/lib/models";
 import { authConfig } from "@/lib/auth.config";
+import { resolveSessionEmployeeId } from "@/lib/employee-utils";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -39,7 +40,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 export async function requireSession() {
   const session = await auth();
-  if (!session?.user?.id) throw new Error("UNAUTHORIZED");
+  if (!session?.user) throw new Error("UNAUTHORIZED");
+
+  // Heal stale JWT ids (e.g. after DB reseed) via email fallback
+  const employeeId = await resolveSessionEmployeeId({
+    id: session.user.id,
+    email: session.user.email,
+  });
+  session.user.id = employeeId;
+
   return session;
 }
 

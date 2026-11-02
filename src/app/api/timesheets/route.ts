@@ -3,6 +3,11 @@ import { requireSession } from "@/lib/auth";
 import connectDB from "@/lib/db";
 import { Timesheet } from "@/lib/models";
 import { handleRouteError, parsePagination } from "@/lib/route-utils";
+import {
+  isAbsentToday,
+  normalizeSessions,
+  sanitizeSessionsForClient,
+} from "@/lib/timesheet-session";
 import type { PaginatedResponse } from "@/types/api";
 
 export async function GET(req: Request) {
@@ -59,8 +64,15 @@ export async function GET(req: Request) {
     const response: PaginatedResponse<Record<string, unknown>> = {
       items: items.map((t) => {
         const emp = t.employeeId as { _id?: { toString(): string }; firstName?: string; lastName?: string; employeeCode?: string } | null;
+        const sessions = normalizeSessions(t as never);
+        const { sessions: _rawSessions, breaks: _rawBreaks, ...rest } = t as Record<string, unknown> & {
+          sessions?: unknown;
+          breaks?: unknown;
+        };
+        void _rawSessions;
+        void _rawBreaks;
         return {
-          ...t,
+          ...rest,
           _id: t._id.toString(),
           employeeId: emp?._id?.toString?.() ?? (t.employeeId as { toString(): string })?.toString?.(),
           employee:
@@ -70,6 +82,12 @@ export async function GET(req: Request) {
           shiftId: t.shiftId?.toString(),
           checkIn: t.checkIn?.toISOString(),
           checkOut: t.checkOut?.toISOString(),
+          checkinStatus: t.checkinStatus,
+          checkoutStatus: t.checkoutStatus,
+          isAbsent: isAbsentToday(t as never),
+          isLate: t.checkinStatus === "Late",
+          isMissedCheckout: t.checkoutStatus === "Missed",
+          sessions: sanitizeSessionsForClient(sessions),
         };
       }),
       total,

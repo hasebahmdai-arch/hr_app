@@ -62,6 +62,23 @@ export const EmployeeSchema = new Schema(
   { timestamps: true }
 );
 
+const timesheetBreakSub = {
+  startedAt: Date,
+  endedAt: Date,
+  startIp: String,
+  endIp: String,
+};
+
+const timesheetSessionSub = {
+  checkIn: Date,
+  checkOut: Date,
+  checkInLocation: { lat: Number, lng: Number },
+  checkOutLocation: { lat: Number, lng: Number },
+  checkInIp: String,
+  checkOutIp: String,
+  breaks: [timesheetBreakSub],
+};
+
 export const TimesheetSchema = new Schema(
   {
     employeeId: { type: Schema.Types.ObjectId, ref: "Employee", required: true },
@@ -77,13 +94,34 @@ export const TimesheetSchema = new Schema(
     expectedMinutes: { type: Number, default: 480 },
     shortMinutes: { type: Number, default: 0 },
     breakMinutes: { type: Number, default: 0 },
-    breaks: [{ startedAt: Date, endedAt: Date }],
+    breaks: [timesheetBreakSub],
+    sessions: [timesheetSessionSub],
     statusCode: { type: String, default: "P" },
     source: { type: String, enum: ["manual", "punch", "import"], default: "punch" },
   },
   { timestamps: true }
 );
 TimesheetSchema.index({ employeeId: 1, date: 1 }, { unique: true });
+
+export const PunchEventSchema = new Schema(
+  {
+    employeeId: { type: Schema.Types.ObjectId, ref: "Employee", required: true },
+    timesheetId: { type: Schema.Types.ObjectId, ref: "Timesheet" },
+    date: { type: String, required: true },
+    action: {
+      type: String,
+      enum: ["check_in", "check_out", "break_start", "break_end"],
+      required: true,
+    },
+    at: { type: Date, required: true },
+    ip: String,
+    location: { lat: Number, lng: Number },
+  },
+  { timestamps: true }
+);
+PunchEventSchema.index({ employeeId: 1, at: -1 });
+PunchEventSchema.index({ date: 1 });
+PunchEventSchema.index({ employeeId: 1, date: 1 });
 
 const baseRequestFields = {
   requestCode: { type: String, required: true, unique: true },
@@ -103,18 +141,32 @@ export const LeaveRequestSchema = new Schema(
   { ...baseRequestFields, leaveType: String, startDate: Date, endDate: Date, reason: String },
   { timestamps: true }
 );
-export const ExpenseRequestSchema = new Schema(
-  { ...baseRequestFields, amount: Number, category: String, receiptFileIds: [Schema.Types.ObjectId] },
-  { timestamps: true }
+/** Reuses legacy expenserequests collection; category no longer written. */
+export const ReimbursementRequestSchema = new Schema(
+  {
+    ...baseRequestFields,
+    amount: Number,
+    reason: { type: String, required: true },
+    category: String,
+    receiptFileIds: [Schema.Types.ObjectId],
+  },
+  { timestamps: true, collection: "expenserequests" }
 );
 export const LoanRequestSchema = new Schema(
-  { ...baseRequestFields, amount: Number, purpose: String, repaymentPlan: String },
+  {
+    ...baseRequestFields,
+    salaryCount: Number,
+    amount: Number,
+    purpose: String,
+    repaymentPlan: String,
+  },
   { timestamps: true }
 );
 export const WfhRequestSchema = new Schema(
   { ...baseRequestFields, dates: [Date], reason: String },
   { timestamps: true }
 );
+/** Kept for historical documents; not in REQUEST_TYPES. */
 export const OfficialDutyRequestSchema = new Schema(
   { ...baseRequestFields, location: String, dates: [Date] },
   { timestamps: true }
@@ -128,7 +180,7 @@ export const TravelRequestSchema = new Schema(
   { timestamps: true }
 );
 
-[PunchRequestSchema, LeaveRequestSchema, ExpenseRequestSchema, LoanRequestSchema, WfhRequestSchema, OfficialDutyRequestSchema, RelaxationRequestSchema, TravelRequestSchema].forEach((s) => {
+[PunchRequestSchema, LeaveRequestSchema, ReimbursementRequestSchema, LoanRequestSchema, WfhRequestSchema].forEach((s) => {
   s.index({ employeeId: 1, status: 1 });
   s.index({ status: 1, createdAt: -1 });
 });
@@ -210,9 +262,13 @@ export const Department = models.Department || model("Department", DepartmentSch
 export const Shift = models.Shift || model("Shift", ShiftSchema);
 export const Employee = models.Employee || model("Employee", EmployeeSchema);
 export const Timesheet = models.Timesheet || model("Timesheet", TimesheetSchema);
+export const PunchEvent = models.PunchEvent || model("PunchEvent", PunchEventSchema);
 export const PunchRequest = models.PunchRequest || model("PunchRequest", PunchRequestSchema);
 export const LeaveRequest = models.LeaveRequest || model("LeaveRequest", LeaveRequestSchema);
-export const ExpenseRequest = models.ExpenseRequest || model("ExpenseRequest", ExpenseRequestSchema);
+export const ReimbursementRequest =
+  models.ReimbursementRequest || model("ReimbursementRequest", ReimbursementRequestSchema);
+/** @deprecated use ReimbursementRequest */
+export const ExpenseRequest = ReimbursementRequest;
 export const LoanRequest = models.LoanRequest || model("LoanRequest", LoanRequestSchema);
 export const WfhRequest = models.WfhRequest || model("WfhRequest", WfhRequestSchema);
 export const OfficialDutyRequest = models.OfficialDutyRequest || model("OfficialDutyRequest", OfficialDutyRequestSchema);
@@ -232,11 +288,8 @@ export const Counter = models.Counter || model("Counter", CounterSchema);
 
 export const REQUEST_MODELS: Record<string, mongoose.Model<unknown>> = {
   punch: PunchRequest,
-  expense: ExpenseRequest,
+  reimbursement: ReimbursementRequest,
   leave: LeaveRequest,
   loans: LoanRequest,
   wfh: WfhRequest,
-  "official-duty": OfficialDutyRequest,
-  relaxation: RelaxationRequest,
-  travel: TravelRequest,
 };

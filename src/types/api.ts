@@ -42,7 +42,22 @@ export interface DashboardAttendanceResponse {
   };
 }
 
-export type TodaySessionState = "not_started" | "working" | "on_break" | "completed";
+export type TodaySessionState = "not_started" | "working" | "on_break" | "idle";
+
+export interface TodaySessionBreak {
+  startedAt: string;
+  endedAt?: string;
+  startedDisplay?: string;
+  endedDisplay?: string;
+}
+
+export interface TodayWorkSession {
+  checkIn: string;
+  checkOut?: string;
+  checkInDisplay?: string;
+  checkOutDisplay?: string;
+  breaks: TodaySessionBreak[];
+}
 
 export interface TodaySessionResponse {
   state: TodaySessionState;
@@ -56,6 +71,22 @@ export interface TodaySessionResponse {
   activeBreakStartedAt?: string;
   workedMinutesSoFar: number;
   expectedMinutes: number;
+  checkinStatus?: string;
+  checkoutStatus?: string;
+  isAbsent?: boolean;
+  isLate?: boolean;
+  isMissedCheckout?: boolean;
+  sessions?: TodayWorkSession[];
+}
+
+export interface PunchEventItem {
+  _id: string;
+  employeeId: string;
+  timesheetId?: string;
+  date: string;
+  action: string;
+  at: string;
+  atDisplay?: string;
 }
 
 export interface HrDashboardOverview {

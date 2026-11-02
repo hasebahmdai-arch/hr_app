@@ -125,6 +125,28 @@ export async function createEmployee(input: CreateEmployeeInput) {
   };
 }
 
+/**
+ * Resolve the DB employee for a session. Heals stale JWTs after DB reseed
+ * by falling back to email lookup when token id no longer exists.
+ */
+export async function resolveSessionEmployeeId(sessionUser: {
+  id?: string | null;
+  email?: string | null;
+}): Promise<string> {
+  await connectDB();
+  const id = sessionUser.id?.trim();
+  if (id && /^[a-fA-F0-9]{24}$/.test(id)) {
+    const byId = await Employee.findById(id).select("_id accountActive").lean();
+    if (byId && byId.accountActive !== false) return byId._id.toString();
+  }
+  const email = sessionUser.email?.trim();
+  if (email) {
+    const byEmail = await Employee.findOne({ email, accountActive: true }).select("_id").lean();
+    if (byEmail) return byEmail._id.toString();
+  }
+  throw new Error("UNAUTHORIZED");
+}
+
 export async function buildProfileResponse(employeeId: string): Promise<ProfileResponse> {
   await connectDB();
   const employee = await Employee.findById(employeeId).lean();

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { useRequests, useCreateRequest, useRequestAction } from "@/hooks/use-requests";
 import { REQUEST_STATUSES } from "@/lib/constants";
@@ -44,6 +44,7 @@ export function RequestsView({ type }: RequestsViewProps) {
   const action = useRequestAction(type);
 
   const [form, setForm] = useState<Record<string, string>>(() => defaultForm(type));
+  const [wfhDates, setWfhDates] = useState<string[]>([todayIso()]);
 
   useEffect(() => {
     if (urlStatus && REQUEST_STATUSES.includes(urlStatus as typeof REQUEST_STATUSES[number])) {
@@ -55,6 +56,7 @@ export function RequestsView({ type }: RequestsViewProps) {
   useEffect(() => {
     if (modalOpen) {
       setForm(defaultForm(type));
+      setWfhDates([todayIso()]);
       setFormError("");
     }
   }, [modalOpen, type]);
@@ -63,7 +65,7 @@ export function RequestsView({ type }: RequestsViewProps) {
     e.preventDefault();
     setFormError("");
     try {
-      const body = buildCreateBody(type, form);
+      const body = buildCreateBody(type, form, wfhDates);
       await create.mutateAsync(body);
       setModalOpen(false);
       setForm(defaultForm(type));
@@ -73,6 +75,7 @@ export function RequestsView({ type }: RequestsViewProps) {
   }
 
   const actionBusy = action.isPending;
+  const reasonRequired = type === "reimbursement";
 
   return (
     <div className="space-y-4">
@@ -85,11 +88,23 @@ export function RequestsView({ type }: RequestsViewProps) {
           <DialogContent>
             <DialogHeader><DialogTitle>New {REQUEST_LABELS[type]} Request</DialogTitle></DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
-              <CreateFormFields type={type} form={form} setForm={setForm} />
-              <div>
-                <Label>Reason (optional)</Label>
-                <Input value={form.reason ?? ""} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
-              </div>
+              <CreateFormFields
+                type={type}
+                form={form}
+                setForm={setForm}
+                wfhDates={wfhDates}
+                setWfhDates={setWfhDates}
+              />
+              {type !== "loans" && (
+                <div>
+                  <Label>Reason {reasonRequired ? "" : "(optional)"}</Label>
+                  <Input
+                    value={form.reason ?? ""}
+                    onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                    required={reasonRequired}
+                  />
+                </div>
+              )}
               {formError && <p className="text-sm text-red-600">{formError}</p>}
               <Button type="submit" className="w-full" disabled={create.isPending}>
                 {create.isPending ? "Submitting..." : "Submit Request"}
@@ -118,6 +133,23 @@ export function RequestsView({ type }: RequestsViewProps) {
                       <p className="text-sm text-muted-foreground">{req.employee.firstName} {req.employee.lastName}</p>
                     )}
                     <p className="text-xs text-muted-foreground">{format(new Date(req.createdAt), "MMM d, yyyy")}</p>
+                    {type === "loans" && typeof (req as unknown as { salaryCount?: number }).salaryCount === "number" && (
+                      <p className="text-sm mt-1">
+                        {(req as unknown as { salaryCount: number }).salaryCount}{" "}
+                        {(req as unknown as { salaryCount: number }).salaryCount === 1 ? "salary" : "salaries"}
+                        {(req as unknown as { purpose?: string }).purpose
+                          ? ` · ${(req as unknown as { purpose: string }).purpose}`
+                          : ""}
+                      </p>
+                    )}
+                    {type === "reimbursement" && typeof (req as unknown as { amount?: number }).amount === "number" && (
+                      <p className="text-sm mt-1">
+                        Amount: {(req as unknown as { amount: number }).amount}
+                        {(req as unknown as { reason?: string }).reason
+                          ? ` · ${(req as unknown as { reason: string }).reason}`
+                          : ""}
+                      </p>
+                    )}
                   </div>
                   <StatusBadge status={req.status} />
                 </div>
@@ -162,10 +194,24 @@ export function RequestsView({ type }: RequestsViewProps) {
 
 function defaultForm(type: RequestType): Record<string, string> {
   if (type === "punch") return { punchType: "check_in", requestedTimestamp: "", reason: "" };
+  if (type === "loans") return { salaryCount: "1", purpose: "", reason: "" };
+  if (type === "reimbursement") return { amount: "", reason: "" };
   return { reason: "" };
 }
 
-function CreateFormFields({ type, form, setForm }: { type: RequestType; form: Record<string, string>; setForm: (f: Record<string, string>) => void }) {
+function CreateFormFields({
+  type,
+  form,
+  setForm,
+  wfhDates,
+  setWfhDates,
+}: {
+  type: RequestType;
+  form: Record<string, string>;
+  setForm: (f: Record<string, string>) => void;
+  wfhDates: string[];
+  setWfhDates: (d: string[]) => void;
+}) {
   const set = (k: string, v: string) => setForm({ ...form, [k]: v });
   const today = todayIso();
   const maxNow = nowLocalDatetimeMax();
@@ -206,51 +252,82 @@ function CreateFormFields({ type, form, setForm }: { type: RequestType; form: Re
           <div><Label>End Date</Label><Input type="date" min={form.startDate || today} value={form.endDate ?? ""} onChange={(e) => set("endDate", e.target.value)} required /></div>
         </>
       );
-    case "expense":
+    case "reimbursement":
       return (
-        <>
-          <div><Label>Amount</Label><Input type="number" min="0.01" step="0.01" value={form.amount ?? ""} onChange={(e) => set("amount", e.target.value)} required /></div>
-          <div><Label>Category</Label><Input value={form.category ?? ""} onChange={(e) => set("category", e.target.value)} required /></div>
-        </>
+        <div>
+          <Label>Amount</Label>
+          <Input type="number" min="0.01" step="0.01" value={form.amount ?? ""} onChange={(e) => set("amount", e.target.value)} required />
+        </div>
       );
     case "loans":
       return (
         <>
-          <div><Label>Amount</Label><Input type="number" min="0.01" step="0.01" value={form.amount ?? ""} onChange={(e) => set("amount", e.target.value)} required /></div>
+          <div>
+            <Label>Number of salaries</Label>
+            <select
+              className="w-full h-10 rounded-md border px-3 text-sm"
+              value={form.salaryCount ?? "1"}
+              onChange={(e) => set("salaryCount", e.target.value)}
+              required
+            >
+              <option value="1">1 salary</option>
+              <option value="2">2 salaries</option>
+              <option value="3">3 salaries</option>
+            </select>
+          </div>
           <div><Label>Purpose</Label><Input value={form.purpose ?? ""} onChange={(e) => set("purpose", e.target.value)} required /></div>
         </>
       );
     case "wfh":
-      return <div><Label>Dates (comma-separated YYYY-MM-DD, today or future)</Label><Input value={form.dates ?? ""} onChange={(e) => set("dates", e.target.value)} placeholder={`${today}, ${today}`} required /></div>;
-    case "official-duty":
       return (
-        <>
-          <div><Label>Location</Label><Input value={form.location ?? ""} onChange={(e) => set("location", e.target.value)} required /></div>
-          <div><Label>Dates (comma-separated YYYY-MM-DD, today or future)</Label><Input value={form.dates ?? ""} onChange={(e) => set("dates", e.target.value)} required /></div>
-        </>
-      );
-    case "relaxation":
-      return (
-        <>
-          <div><Label>Date</Label><Input type="date" max={today} value={form.date ?? ""} onChange={(e) => set("date", e.target.value)} required /></div>
-          <div><Label>Type</Label><Input value={form.type ?? ""} onChange={(e) => set("type", e.target.value)} required /></div>
-          <div><Label>Minutes</Label><Input type="number" min="1" value={form.minutes ?? ""} onChange={(e) => set("minutes", e.target.value)} required /></div>
-        </>
-      );
-    case "travel":
-      return (
-        <>
-          <div><Label>Destination</Label><Input value={form.destination ?? ""} onChange={(e) => set("destination", e.target.value)} required /></div>
-          <div><Label>Dates (comma-separated YYYY-MM-DD, today or future)</Label><Input value={form.dates ?? ""} onChange={(e) => set("dates", e.target.value)} required /></div>
-          <div><Label>Purpose</Label><Input value={form.purpose ?? ""} onChange={(e) => set("purpose", e.target.value)} /></div>
-        </>
+        <div className="space-y-3">
+          <Label>Dates (today or future)</Label>
+          {wfhDates.map((d, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <Input
+                type="date"
+                min={today}
+                value={d}
+                onChange={(e) => {
+                  const next = [...wfhDates];
+                  next[i] = e.target.value;
+                  setWfhDates(next);
+                }}
+                required
+              />
+              {wfhDates.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setWfhDates(wfhDates.filter((_, j) => j !== i))}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setWfhDates([...wfhDates, today])}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add date
+          </Button>
+        </div>
       );
     default:
       return null;
   }
 }
 
-function buildCreateBody(type: RequestType, form: Record<string, string>): Record<string, unknown> {
+function buildCreateBody(
+  type: RequestType,
+  form: Record<string, string>,
+  wfhDates: string[]
+): Record<string, unknown> {
   switch (type) {
     case "punch":
       return {
@@ -260,21 +337,16 @@ function buildCreateBody(type: RequestType, form: Record<string, string>): Recor
       };
     case "leave":
       return { leaveType: form.leaveType, startDate: form.startDate, endDate: form.endDate, reason: form.reason || undefined };
-    case "expense":
-      return { amount: Number(form.amount), category: form.category, reason: form.reason || undefined };
+    case "reimbursement":
+      return { amount: Number(form.amount), reason: form.reason };
     case "loans":
-      return { amount: Number(form.amount), purpose: form.purpose, reason: form.reason || undefined };
-    case "wfh":
-      return { dates: (form.dates ?? "").split(",").map((d) => d.trim()).filter(Boolean), reason: form.reason || undefined };
-    case "official-duty":
-      return { location: form.location, dates: (form.dates ?? "").split(",").map((d) => d.trim()).filter(Boolean), reason: form.reason || undefined };
-    case "relaxation":
-      return { date: form.date, type: form.type, minutes: Number(form.minutes), reason: form.reason || undefined };
-    case "travel":
       return {
-        destination: form.destination,
-        dates: (form.dates ?? "").split(",").map((d) => d.trim()).filter(Boolean),
-        purpose: form.purpose || undefined,
+        salaryCount: Number(form.salaryCount),
+        purpose: form.purpose,
+      };
+    case "wfh":
+      return {
+        dates: wfhDates.map((d) => d.trim()).filter(Boolean),
         reason: form.reason || undefined,
       };
     default:

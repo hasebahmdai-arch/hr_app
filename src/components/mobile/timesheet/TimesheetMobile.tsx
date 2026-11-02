@@ -11,7 +11,7 @@ import {
   subMonths,
 } from "date-fns";
 import { useSession } from "next-auth/react";
-import { useTimesheets } from "@/hooks/use-timesheets";
+import { usePunchEvents, useTimesheets } from "@/hooks/use-timesheets";
 import { usePeople } from "@/hooks/use-people";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { TimesheetFilters } from "@/types/api";
+import type { Timesheet } from "@/types/domain";
 
 type Preset = "7d" | "week" | "month" | "lastMonth" | "custom";
 
@@ -61,12 +62,36 @@ const PRESETS: { id: Preset; label: string }[] = [
   { id: "custom", label: "Custom" },
 ];
 
+function MobileRowDetail({ row }: { row: Timesheet }) {
+  const { data: events } = usePunchEvents({ date: row.date, employeeId: row.employeeId, limit: 50 });
+  return (
+    <div className="mt-3 pt-3 border-t space-y-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap gap-1">
+        {row.isLate && <span className="rounded bg-warning/15 text-warning px-2 py-0.5">Late</span>}
+        {row.isAbsent && <span className="rounded bg-destructive/10 text-destructive px-2 py-0.5">Absent</span>}
+        {row.isMissedCheckout && <span className="rounded bg-warning/15 text-warning px-2 py-0.5">Missed checkout</span>}
+      </div>
+      {(row.sessions ?? []).map((s, i) => (
+        <p key={i}>
+          Session {i + 1}: {s.checkInDisplay ?? "—"} → {s.checkOutDisplay ?? "open"}
+        </p>
+      ))}
+      {events?.items?.map((e) => (
+        <p key={e._id}>
+          {e.atDisplay ?? format(new Date(e.at), "h:mm a")} — {e.action.replace(/_/g, " ")}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function TimesheetMobile() {
   const { data: session } = useSession();
   const isHR = session?.user?.role === "hr";
   const now = useMemo(() => new Date(), []);
   const monthRange = rangeForPreset("month", now)!;
   const [preset, setPreset] = useState<Preset>("month");
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [filters, setFilters] = useState<TimesheetFilters>({
     ...monthRange,
     page: 1,
@@ -171,31 +196,41 @@ export function TimesheetMobile() {
 
       <QueryBoundary isLoading={isLoading} isError={isError} onRetry={() => refetch()}>
         <div className="space-y-3">
-          {data?.items.map((row) => (
-            <Card key={row._id} className="border-0 shadow-card">
-              <CardContent className="pt-4">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    {isHR && row.employee && (
-                      <p className="text-sm font-medium">
-                        {row.employee.firstName} {row.employee.lastName}
-                      </p>
-                    )}
-                    <span className="font-medium">{row.date}</span>
-                  </div>
-                  <StatusBadge status={row.statusCode} />
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                  <div>In: {row.checkIn ? format(new Date(row.checkIn), "HH:mm") : "—"}</div>
-                  <div>Out: {row.checkOut ? format(new Date(row.checkOut), "HH:mm") : "—"}</div>
-                  <div>
-                    Worked: {Math.floor(row.workedMinutes / 60)}h {row.workedMinutes % 60}m
-                  </div>
-                  <div>Break: {row.breakMinutes}m</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {data?.items.map((row) => {
+            const open = expanded === row._id;
+            return (
+              <Card key={row._id} className="border-0 shadow-card">
+                <CardContent className="pt-4">
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => setExpanded(open ? null : row._id)}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        {isHR && row.employee && (
+                          <p className="text-sm font-medium">
+                            {row.employee.firstName} {row.employee.lastName}
+                          </p>
+                        )}
+                        <span className="font-medium">{row.date}</span>
+                      </div>
+                      <StatusBadge status={row.statusCode} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                      <div>In: {row.checkIn ? format(new Date(row.checkIn), "h:mm a") : "—"}</div>
+                      <div>Out: {row.checkOut ? format(new Date(row.checkOut), "h:mm a") : "—"}</div>
+                      <div>
+                        Business: {Math.floor(row.workedMinutes / 60)}h {row.workedMinutes % 60}m
+                      </div>
+                      <div>Break: {row.breakMinutes}m</div>
+                    </div>
+                  </button>
+                  {open && <MobileRowDetail row={row} />}
+                </CardContent>
+              </Card>
+            );
+          })}
           {!data?.items.length && (
             <p className="text-center text-muted-foreground py-8">No records in this range</p>
           )}

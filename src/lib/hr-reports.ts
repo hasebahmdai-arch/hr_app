@@ -47,7 +47,7 @@ export async function getHrOverview(month: string): Promise<HrDashboardOverview>
       checkOut: sheet.checkOut,
       breaks: sheet.breaks as { startedAt: Date; endedAt?: Date }[],
     });
-    if (state === "working" || state === "on_break" || state === "completed") presentToday++;
+    if (state === "working" || state === "on_break" || state === "idle") presentToday++;
     if (state === "on_break") onBreakToday++;
   }
 
@@ -131,7 +131,7 @@ export async function getHrAttendanceReport(
         checkOut: todaySheet.checkOut,
         breaks: todaySheet.breaks as { startedAt: Date; endedAt?: Date }[],
       });
-      if (state === "completed") statusToday = "Completed";
+      if (state === "idle") statusToday = "Completed";
       else if (state === "on_break") statusToday = "On Break";
       else statusToday = "Present";
     }

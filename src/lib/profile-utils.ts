@@ -43,9 +43,11 @@ export function shiftToMinutes(start: string, end: string, breakMinutes = 60) {
 
 export function minutesToTimeLabel(minutes: number | null) {
   if (minutes === null) return null;
-  const h = Math.floor(minutes / 60);
+  const h24 = Math.floor(minutes / 60) % 24;
   const m = minutes % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  const suffix = h24 >= 12 ? "PM" : "AM";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
 export function dateToCheckInMinutes(iso?: string | Date | null) {

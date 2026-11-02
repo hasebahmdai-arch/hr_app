@@ -2,13 +2,10 @@ import { REQUEST_TYPES, type RequestType } from "@/lib/constants";
 
 export const REQUEST_LABELS: Record<RequestType, string> = {
   punch: "Punch",
-  expense: "Expense",
+  reimbursement: "Reimbursement",
   leave: "Leave",
   loans: "Loans",
   wfh: "Work From Home",
-  "official-duty": "Official Duty",
-  relaxation: "Relaxation",
-  travel: "Travel",
 };
 
 export const WEB_NAV = [
@@ -46,4 +43,5 @@ export const ADMIN_NAV = [
   { href: "/app/admin/departments", label: "Departments" },
   { href: "/app/admin/shifts", label: "Shifts" },
   { href: "/app/admin/documents", label: "Documents" },
+  { href: "/app/admin/announcements", label: "Announcements" },
 ] as const;

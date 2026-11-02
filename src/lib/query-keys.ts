@@ -15,6 +15,7 @@ export const queryKeys = {
     requests: (limit: number) => ["hr-dashboard", "requests", limit] as const,
   },
   timesheets: (filters: TimesheetFilters) => ["timesheets", filters] as const,
+  punchEvents: (filters: Record<string, string | undefined>) => ["punch-events", filters] as const,
   requests: (type: string, status: string, page: number) => ["requests", type, status, page] as const,
   requestInbox: (status: string, page: number) => ["request-inbox", status, page] as const,
   requestInboxCount: () => ["request-inbox", "count"] as const,
@@ -24,6 +25,6 @@ export const queryKeys = {
   admin: {
     departments: () => ["admin", "departments"] as const,
     shifts: () => ["admin", "shifts"] as const,
-    documents: () => ["admin", "documents"] as const,
+    documents: (type?: string) => ["admin", "documents", type ?? "all"] as const,
   },
 };

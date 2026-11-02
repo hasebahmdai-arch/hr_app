@@ -6,10 +6,10 @@ import { Employee, Timesheet } from "@/lib/models";
 import {
   computeAttendancePct,
   dateToCheckInMinutes,
-  minutesToTimeLabel,
   shiftToMinutes,
 } from "@/lib/profile-utils";
 import { handleRouteError } from "@/lib/route-utils";
+import { formatTimeDisplay } from "@/lib/timesheet-session";
 import type { DashboardAttendanceResponse } from "@/types/api";
 
 export async function GET(req: Request) {
@@ -87,12 +87,8 @@ export async function GET(req: Request) {
         ? {
             checkIn: todayRecord.checkIn?.toISOString(),
             checkOut: todayRecord.checkOut?.toISOString(),
-            checkInDisplay: todayRecord.checkIn
-              ? minutesToTimeLabel(dateToCheckInMinutes(todayRecord.checkIn)) ?? undefined
-              : undefined,
-            checkOutDisplay: todayRecord.checkOut
-              ? minutesToTimeLabel(dateToCheckInMinutes(todayRecord.checkOut)) ?? undefined
-              : undefined,
+            checkInDisplay: formatTimeDisplay(todayRecord.checkIn) ?? undefined,
+            checkOutDisplay: formatTimeDisplay(todayRecord.checkOut) ?? undefined,
             shiftStart: shift?.startTime,
             shiftEnd: shift?.endTime,
           }

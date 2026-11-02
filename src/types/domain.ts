@@ -67,6 +67,21 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface TimesheetSessionBreak {
+  startedAt: string;
+  endedAt?: string;
+  startedDisplay?: string;
+  endedDisplay?: string;
+}
+
+export interface TimesheetSession {
+  checkIn: string;
+  checkOut?: string;
+  checkInDisplay?: string;
+  checkOutDisplay?: string;
+  breaks: TimesheetSessionBreak[];
+}
+
 export interface Timesheet {
   _id: string;
   employeeId: string;
@@ -78,11 +93,15 @@ export interface Timesheet {
   checkOutLocation?: { lat: number; lng: number };
   checkinStatus?: string;
   checkoutStatus?: string;
+  isAbsent?: boolean;
+  isLate?: boolean;
+  isMissedCheckout?: boolean;
   workedMinutes: number;
   expectedMinutes: number;
   shortMinutes: number;
   breakMinutes: number;
   breaks?: { startedAt: string; endedAt?: string }[];
+  sessions?: TimesheetSession[];
   statusCode: string;
   source: string;
   employee?: Pick<Employee, "firstName" | "lastName" | "employeeCode">;

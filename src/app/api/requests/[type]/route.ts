@@ -103,11 +103,8 @@ function transformCreateData(type: RequestType, data: Record<string, unknown>) {
     result.startDate = new Date(data.startDate as string);
     result.endDate = new Date(data.endDate as string);
   }
-  if (["wfh", "official-duty", "travel"].includes(type) && Array.isArray(data.dates)) {
+  if (type === "wfh" && Array.isArray(data.dates)) {
     result.dates = (data.dates as string[]).map((d) => new Date(d));
-  }
-  if (type === "relaxation" && data.date) {
-    result.date = new Date(data.date as string);
   }
   return result;
 }

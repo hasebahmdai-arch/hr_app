@@ -55,14 +55,14 @@ export function useCreateShift() {
   });
 }
 
-export function useAdminDocuments() {
+export function useAdminDocuments(type: "all" | "documents" | "announcements" = "all") {
   return useQuery({
-    queryKey: queryKeys.admin.documents(),
+    queryKey: queryKeys.admin.documents(type),
     queryFn: () =>
       fetcher<{
         companyDocuments?: { _id: string; title: string; fileId?: string; category?: string }[];
         announcements?: { _id: string; title: string; body: string; type?: string }[];
-      }>("/api/admin/documents"),
+      }>(`/api/admin/documents?type=${type}`),
   });
 }
 
@@ -71,6 +71,6 @@ export function useCreateAdminDocument() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       fetcher("/api/admin/documents", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.documents() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "documents"] }),
   });
 }

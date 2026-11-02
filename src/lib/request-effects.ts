@@ -2,7 +2,6 @@ import { eachDayOfInterval, format } from "date-fns";
 import type { RequestType } from "@/lib/constants";
 import { Employee, Timesheet } from "@/lib/models";
 import { shiftToMinutes } from "@/lib/profile-utils";
-import { computeNetWorkedMinutes } from "@/lib/timesheet-session";
 
 export interface TimesheetSnapshot {
   date: string;
@@ -99,7 +98,7 @@ async function applyDateEffect(
   };
 }
 
-const ATTENDANCE_TYPES: RequestType[] = ["punch", "leave", "wfh", "official-duty", "relaxation", "travel"];
+const ATTENDANCE_TYPES: RequestType[] = ["punch", "leave", "wfh"];
 
 export function isAttendanceRequestType(type: RequestType) {
   return ATTENDANCE_TYPES.includes(type);
@@ -123,31 +122,41 @@ export async function applyRequestEffect(
     const date = format(new Date(requestedTimestamp), "yyyy-MM-dd");
     const existing = await findTimesheet(employeeId, date);
     const punchAt = new Date(requestedTimestamp);
+    const { normalizeSessions, getOpenSession, syncDerivedFields, computeCheckinStatus } = await import(
+      "@/lib/timesheet-session"
+    );
+    const sessions = normalizeSessions(existing as never);
 
     if (punchType === "check_in") {
-      if (existing?.checkIn) throw new Error("Check-in already recorded for this date");
+      if (getOpenSession(sessions)) throw new Error("An open check-in session already exists for this date");
+      const isFirst = sessions.length === 0;
+      sessions.push({ checkIn: punchAt, breaks: [] });
+      const derived = syncDerivedFields(sessions, punchAt);
       dates.push(
         await applyDateEffect(employeeId, date, {
-          checkIn: punchAt,
+          ...derived,
+          sessions,
           source: "manual",
           statusCode: "P",
+          ...(isFirst
+            ? { checkinStatus: computeCheckinStatus(punchAt, shift?.startTime) }
+            : {}),
         }, shift)
       );
     } else if (punchType === "check_out") {
-      if (!existing?.checkIn) throw new Error("Cannot check out without an existing check-in");
-      if (existing?.checkOut) throw new Error("Check-out already recorded for this date");
-      const checkIn = new Date(existing.checkIn as Date);
-      if (punchAt.getTime() < checkIn.getTime()) {
+      const open = getOpenSession(sessions);
+      if (!open) throw new Error("Cannot check out without an open check-in session");
+      if (punchAt.getTime() < new Date(open.checkIn).getTime()) {
         throw new Error("Check-out time must be on or after check-in");
       }
-      const workedMinutes = computeNetWorkedMinutes(checkIn, punchAt);
+      open.checkOut = punchAt;
+      const derived = syncDerivedFields(sessions, punchAt);
       const expectedMinutes = Number(existing?.expectedMinutes ?? expectedMinutesForShift(shift));
       dates.push(
         await applyDateEffect(employeeId, date, {
-          checkOut: punchAt,
-          workedMinutes,
-          breakMinutes: existing?.breakMinutes ?? 0,
-          shortMinutes: Math.max(expectedMinutes - workedMinutes, 0),
+          ...derived,
+          sessions,
+          shortMinutes: Math.max(expectedMinutes - derived.workedMinutes, 0),
           source: "manual",
           statusCode: "P",
         }, shift)
@@ -184,51 +193,6 @@ export async function applyRequestEffect(
         }, shift)
       );
     }
-  }
-
-  if (type === "official-duty") {
-    const dayDates = (request.dates as Date[]) ?? [];
-    for (const day of dayDates) {
-      const date = format(new Date(day), "yyyy-MM-dd");
-      dates.push(
-        await applyDateEffect(employeeId, date, {
-          statusCode: "O",
-          source: "manual",
-        }, shift)
-      );
-    }
-  }
-
-  if (type === "travel") {
-    const dayDates = (request.dates as Date[]) ?? [];
-    for (const day of dayDates) {
-      const date = format(new Date(day), "yyyy-MM-dd");
-      dates.push(
-        await applyDateEffect(employeeId, date, {
-          statusCode: "T",
-          source: "manual",
-        }, shift)
-      );
-    }
-  }
-
-  if (type === "relaxation") {
-    const day = new Date(request.date as Date);
-    const minutes = (request.minutes as number) ?? 0;
-    const date = format(day, "yyyy-MM-dd");
-    const existing = await findTimesheet(employeeId, date);
-    if (!existing) throw new Error("No timesheet record found for relaxation date");
-
-    const shortMinutes = Math.max(Number(existing.shortMinutes) - minutes, 0);
-    const patch: Record<string, unknown> = {
-      shortMinutes,
-      source: "manual",
-    };
-    const unset: string[] = [];
-    if (shortMinutes === 0 && existing.checkinStatus) {
-      unset.push("checkinStatus");
-    }
-    dates.push(await applyDateEffect(employeeId, date, patch, shift, unset));
   }
 
   return { dates };
