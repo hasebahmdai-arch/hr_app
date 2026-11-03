@@ -8,8 +8,13 @@ export const handler: Handler = async (event) => {
 
   try {
     const { processLeaveDeductionsGlobal } = await import("../../src/lib/leave-deduct");
-    const result = await processLeaveDeductionsGlobal();
-    return { statusCode: 200, body: JSON.stringify(result) };
+    const { processWfhDeductionsGlobal } = await import("../../src/lib/wfh-deduct");
+    const leave = await processLeaveDeductionsGlobal();
+    const wfh = await processWfhDeductionsGlobal();
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ leave, wfh }),
+    };
   } catch (error) {
     console.error("scheduled-leave-deduct failed", error);
     return {

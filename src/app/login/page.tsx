@@ -5,9 +5,10 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthLayout } from "@/components/shared/AuthLayout";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/shared/PasswordInput";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -47,12 +48,12 @@ export default function LoginPage() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Signing in..." : "Sign in"}
-        </Button>
+        <LoadingButton type="submit" className="w-full" loading={loading}>
+          Sign in
+        </LoadingButton>
         <p className="text-center text-sm">
           <Link href="/forgot-password" className="text-primary hover:underline">Forgot password?</Link>
         </p>

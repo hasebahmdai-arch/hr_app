@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import { REQUEST_TYPES } from "@/lib/constants";
 import connectDB from "@/lib/db";
 import { REQUEST_MODELS } from "@/lib/models";
@@ -10,6 +11,45 @@ export interface InboxRow {
   employeeId: string;
   employeeName: string;
   createdAt: string;
+  reason?: string;
+  summary?: string;
+}
+
+function buildSummary(type: string, row: Record<string, unknown>): string | undefined {
+  if (type === "leave") {
+    const leaveType = row.leaveType ? String(row.leaveType) : "Leave";
+    const start = row.startDate ? format(new Date(row.startDate as Date), "MMM d") : "";
+    const end = row.endDate ? format(new Date(row.endDate as Date), "MMM d") : "";
+    return [leaveType, start && end ? `${start}–${end}` : start || end].filter(Boolean).join(" · ");
+  }
+  if (type === "wfh") {
+    const dates = (row.dates as Date[] | undefined) ?? [];
+    if (!dates.length) return "WFH";
+    const labels = dates
+      .slice(0, 3)
+      .map((d) => format(new Date(d), "MMM d"))
+      .join(", ");
+    return dates.length > 3 ? `${labels} (+${dates.length - 3})` : labels;
+  }
+  if (type === "reimbursement") {
+    const amount = row.amount != null ? `PKR ${Number(row.amount).toLocaleString()}` : "";
+    const expenseDate = row.expenseDate
+      ? format(new Date(row.expenseDate as Date), "MMM d, yyyy h:mm a")
+      : "";
+    return [amount, expenseDate].filter(Boolean).join(" · ") || undefined;
+  }
+  if (type === "punch") {
+    const punchType = String(row.punchType ?? "punch").replace(/_/g, " ");
+    const at = row.requestedTimestamp
+      ? format(new Date(row.requestedTimestamp as Date), "MMM d, h:mm a")
+      : "";
+    return [punchType, at].filter(Boolean).join(" · ");
+  }
+  if (type === "loans") {
+    const count = row.salaryCount != null ? `${row.salaryCount} salary` : "";
+    return count || undefined;
+  }
+  return undefined;
 }
 
 export async function fetchInboxRows(statusFilter?: string): Promise<InboxRow[]> {
@@ -20,8 +60,9 @@ export async function fetchInboxRows(statusFilter?: string): Promise<InboxRow[]>
     const Model = REQUEST_MODELS[type];
     const filter: Record<string, unknown> = {};
     if (statusFilter === "ATTENTION" || statusFilter === "PENDING") {
-      // Pending tab includes cancel requests awaiting HR
       filter.status = { $in: ["PENDING", "CANCELING"] };
+    } else if (statusFilter === "CANCELING") {
+      filter.status = "CANCELING";
     } else if (statusFilter && statusFilter !== "ALL") {
       filter.status = statusFilter;
     }
@@ -34,7 +75,17 @@ export async function fetchInboxRows(statusFilter?: string): Promise<InboxRow[]>
 
     for (const item of items) {
       const row = item as Record<string, unknown>;
-      const emp = row.employeeId as { _id?: { toString(): string }; firstName?: string; lastName?: string } | null;
+      const emp = row.employeeId as {
+        _id?: { toString(): string };
+        firstName?: string;
+        lastName?: string;
+      } | null;
+      const reason =
+        typeof row.reason === "string" && row.reason.trim()
+          ? row.reason.trim()
+          : typeof row.purpose === "string" && row.purpose.trim()
+            ? row.purpose.trim()
+            : undefined;
       rows.push({
         _id: (row._id as { toString(): string }).toString(),
         requestCode: row.requestCode as string,
@@ -43,6 +94,8 @@ export async function fetchInboxRows(statusFilter?: string): Promise<InboxRow[]>
         employeeId: emp?._id?.toString?.() ?? String(row.employeeId),
         employeeName: emp ? `${emp.firstName} ${emp.lastName}` : "Unknown",
         createdAt: (row.createdAt as Date).toISOString(),
+        reason,
+        summary: buildSummary(type, row),
       });
     }
   }

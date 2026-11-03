@@ -99,6 +99,7 @@ export interface CreateEmployeeInput {
   relatives?: { name: string; relationship: string; phone?: string; isDependent?: boolean }[];
   sickLeaveDays?: number;
   casualLeaveDays?: number;
+  wfhLeaveDays?: number;
 }
 
 export async function createEmployee(input: CreateEmployeeInput) {
@@ -152,7 +153,12 @@ export async function createEmployee(input: CreateEmployeeInput) {
     employmentInfo: input.employmentInfo ?? {},
     qualifications: input.qualifications ?? [],
     relatives: input.relatives ?? [],
-    leaveBalances: defaultLeaveBalancesForCreate(input.sickLeaveDays, input.casualLeaveDays, year),
+    leaveBalances: defaultLeaveBalancesForCreate(
+      input.sickLeaveDays,
+      input.casualLeaveDays,
+      input.wfhLeaveDays,
+      year
+    ),
     accountActive: true,
   });
 
@@ -278,7 +284,11 @@ export async function updateEmployeeProfile(
     }
   }
 
-  if (updates.sickLeaveDays !== undefined || updates.casualLeaveDays !== undefined) {
+  if (
+    updates.sickLeaveDays !== undefined ||
+    updates.casualLeaveDays !== undefined ||
+    updates.wfhLeaveDays !== undefined
+  ) {
     const year = new Date().getFullYear();
     const next = ensureYearBalancesOnDoc(
       (employee.leaveBalances ?? []) as LeaveBalanceRow[],
@@ -291,6 +301,10 @@ export async function updateEmployeeProfile(
     if (updates.casualLeaveDays !== undefined) {
       const row = next.find((b) => b.leaveType === "Casual" && b.year === year)!;
       row.entitled = Number(updates.casualLeaveDays);
+    }
+    if (updates.wfhLeaveDays !== undefined) {
+      const row = next.find((b) => b.leaveType === "WFH" && b.year === year)!;
+      row.entitled = Number(updates.wfhLeaveDays);
     }
     employee.leaveBalances = next as never;
   }

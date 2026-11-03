@@ -6,6 +6,9 @@ import { canAccessFile, deleteFileMetadata } from "@/lib/files";
 import { downloadFromGridFS, type GridFSBucketName } from "@/lib/gridfs";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();
@@ -14,10 +17,18 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     if (!allowed) return apiError("Forbidden", "FORBIDDEN", 403);
 
     const stream = await downloadFromGridFS(file.bucket as GridFSBucketName, file.gridFsId);
+    const mime = (file.mimeType || "").toLowerCase();
+    const name = (file.filename || "file").replace(/"/g, "");
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")).toLowerCase() : "";
+    const isPdf = mime === "application/pdf" || ext === ".pdf";
+    // Keep images inline for avatars / announcement previews; PDFs viewable in-browser
+    const isImage = mime.startsWith("image/") || [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext);
+    const disposition = isPdf || isImage ? "inline" : "attachment";
+
     return new NextResponse(Readable.toWeb(stream) as ReadableStream, {
       headers: {
         "Content-Type": file.mimeType || "application/octet-stream",
-        "Content-Disposition": `inline; filename="${file.filename || "file"}"`,
+        "Content-Disposition": `${disposition}; filename="${name}"`,
       },
     });
   } catch (error) {

@@ -16,6 +16,7 @@ import {
   Timesheet,
 } from "@/lib/models";
 import { computeAttendancePct } from "@/lib/profile-utils";
+import { todayInCompanyTz } from "@/lib/timesheet-auto-checkout";
 import { getSessionState } from "@/lib/timesheet-session";
 import type {
   HrAttendanceReport,
@@ -25,14 +26,14 @@ import type {
 
 export async function getHrOverview(month: string): Promise<HrDashboardOverview> {
   await connectDB();
-  const today = format(new Date(), "yyyy-MM-dd");
+  const today = todayInCompanyTz();
   const monthStart = startOfMonth(parse(month, "yyyy-MM", new Date()));
   const monthEnd = endOfMonth(monthStart);
   const dateFrom = format(monthStart, "yyyy-MM-dd");
   const dateTo = format(monthEnd, "yyyy-MM-dd");
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd }).length;
 
-  const employees = await Employee.find({ role: "employee", accountActive: true })
+  const employees = await Employee.find({ accountActive: true })
     .select("_id hireDate")
     .lean();
   const employeeIds = employees.map((e) => e._id);
@@ -125,11 +126,11 @@ export async function getHrAttendanceReport(
   const monthEnd = endOfMonth(monthStart);
   const dateFrom = format(monthStart, "yyyy-MM-dd");
   const dateTo = format(monthEnd, "yyyy-MM-dd");
-  const today = format(new Date(), "yyyy-MM-dd");
+  const today = todayInCompanyTz();
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd }).length;
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  const empFilter: Record<string, unknown> = { role: "employee", accountActive: true };
+  const empFilter: Record<string, unknown> = { accountActive: true };
   if (departmentId) empFilter.departmentId = departmentId;
 
   const [employees, departments, sheets] = await Promise.all([

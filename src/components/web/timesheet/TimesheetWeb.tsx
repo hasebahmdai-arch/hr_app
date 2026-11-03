@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   format,
   startOfMonth,
@@ -9,14 +9,20 @@ import {
   endOfWeek,
   subDays,
   subMonths,
+  parse,
 } from "date-fns";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, ChevronDown, ChevronRight, Search } from "lucide-react";
 import { usePunchEvents, useTimesheets } from "@/hooks/use-timesheets";
 import { usePeople } from "@/hooks/use-people";
+import { useHrPersonAttendanceSummary } from "@/hooks/use-hr-dashboard";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { Avatar } from "@/components/shared/Avatar";
+import { AttendanceStatTiles } from "@/components/shared/dashboard/AttendanceStatTiles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -128,19 +134,143 @@ function TimesheetRowDetail({ row }: { row: Timesheet }) {
   );
 }
 
-export function TimesheetWeb() {
-  const { data: session } = useSession();
-  const isHR = session?.user?.role === "hr";
-  const now = useMemo(() => new Date(), []);
-  const [preset, setPreset] = useState<Preset>("month");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [filters, setFilters] = useState<TimesheetFilters>({
-    ...rangeForPreset("month", now)!,
+function filtersFromSearchParams(params: URLSearchParams, now = new Date()): TimesheetFilters {
+  const monthDefault = rangeForPreset("month", now)!;
+  const dateFrom = params.get("dateFrom") || monthDefault.dateFrom;
+  const dateTo = params.get("dateTo") || monthDefault.dateTo;
+  const status = params.get("status") || undefined;
+  const flag = params.get("flag") || undefined;
+  const employeeId = params.get("employeeId") || undefined;
+  return {
+    dateFrom,
+    dateTo,
+    status,
+    flag,
+    employeeId,
     page: 1,
     limit: 20,
-  });
+  };
+}
+
+function monthFromRange(dateFrom?: string) {
+  if (dateFrom && /^\d{4}-\d{2}/.test(dateFrom)) return dateFrom.slice(0, 7);
+  return format(new Date(), "yyyy-MM");
+}
+
+function HrPeopleTimesheetGrid({ month }: { month: string }) {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const { data, isLoading, isError, refetch } = usePeople(query, 1, false, 100);
+  const range = {
+    dateFrom: format(startOfMonth(parse(month, "yyyy-MM", new Date())), "yyyy-MM-dd"),
+    dateTo: format(endOfMonth(parse(month, "yyyy-MM", new Date())), "yyyy-MM-dd"),
+  };
+
+  function openPerson(id: string) {
+    const params = new URLSearchParams({
+      employeeId: id,
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+    });
+    router.push(`/app/timesheet?${params.toString()}`);
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Timesheet" subtitle="Select a person to view their timesheet" />
+      <div className="flex flex-wrap gap-4 items-end">
+        <div>
+          <Label>Month</Label>
+          <Input
+            type="month"
+            value={month}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (!/^\d{4}-\d{2}$/.test(next)) return;
+              const nextRange = {
+                dateFrom: format(startOfMonth(parse(next, "yyyy-MM", new Date())), "yyyy-MM-dd"),
+                dateTo: format(endOfMonth(parse(next, "yyyy-MM", new Date())), "yyyy-MM-dd"),
+              };
+              router.replace(
+                `/app/timesheet?dateFrom=${nextRange.dateFrom}&dateTo=${nextRange.dateTo}`
+              );
+            }}
+            className="w-[160px]"
+          />
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuery(search);
+          }}
+          className="relative flex-1 min-w-[200px] max-w-md"
+        >
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, code, email..."
+            className="pl-9"
+          />
+        </form>
+      </div>
+
+      <QueryBoundary isLoading={isLoading} isError={isError} onRetry={() => refetch()}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {data?.items.map((person) => (
+            <button
+              key={person._id}
+              type="button"
+              onClick={() => openPerson(person._id)}
+              className="text-left"
+            >
+              <Card className="hover:shadow-md transition-shadow h-full">
+                <CardContent className="pt-6 flex items-center gap-4">
+                  <Avatar
+                    firstName={person.firstName}
+                    lastName={person.lastName}
+                    fileId={person.avatarFileId}
+                  />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">
+                      {person.firstName} {person.lastName}
+                    </p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {person.employeeCode}
+                    </p>
+                    {person.department && (
+                      <p className="text-xs text-primary truncate">{person.department.name}</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </button>
+          ))}
+        </div>
+        {!data?.items.length && (
+          <p className="text-center text-muted-foreground py-12">No people found</p>
+        )}
+      </QueryBoundary>
+    </div>
+  );
+}
+
+function TimesheetTable({
+  filters,
+  setFilters,
+  preset,
+  setPreset,
+  showEmployeeColumn,
+}: {
+  filters: TimesheetFilters;
+  setFilters: React.Dispatch<React.SetStateAction<TimesheetFilters>>;
+  preset: Preset;
+  setPreset: (p: Preset) => void;
+  showEmployeeColumn: boolean;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const { data, isLoading, isError, refetch } = useTimesheets(filters);
-  const { data: peopleData } = usePeople("", 1, false);
 
   function applyPreset(next: Preset) {
     setPreset(next);
@@ -149,11 +279,11 @@ export function TimesheetWeb() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Timesheet" subtitle="Punch records by custom date range" />
-
+    <>
       <Card className="border-0 shadow-card">
-        <CardHeader><CardTitle className="text-base">Date range</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Date range</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {PRESETS.map((p) => (
@@ -169,25 +299,6 @@ export function TimesheetWeb() {
             ))}
           </div>
           <div className="flex flex-wrap gap-4 items-end">
-            {isHR && (
-              <div>
-                <Label>Employee</Label>
-                <select
-                  className="h-10 rounded-md border px-3 text-sm min-w-[180px]"
-                  value={filters.employeeId ?? ""}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, employeeId: e.target.value || undefined, page: 1 }))
-                  }
-                >
-                  <option value="">All employees</option>
-                  {peopleData?.items.map((p) => (
-                    <option key={p._id} value={p._id}>
-                      {p.firstName} {p.lastName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
             <div>
               <Label>From</Label>
               <Input
@@ -217,7 +328,12 @@ export function TimesheetWeb() {
                 className="h-10 rounded-md border px-3 text-sm"
                 value={filters.status ?? ""}
                 onChange={(e) =>
-                  setFilters((f) => ({ ...f, status: e.target.value || undefined, page: 1 }))
+                  setFilters((f) => ({
+                    ...f,
+                    status: e.target.value || undefined,
+                    flag: undefined,
+                    page: 1,
+                  }))
                 }
               >
                 <option value="">All</option>
@@ -226,6 +342,27 @@ export function TimesheetWeb() {
                     {s}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <Label>Flag</Label>
+              <select
+                className="h-10 rounded-md border px-3 text-sm"
+                value={filters.flag ?? ""}
+                onChange={(e) =>
+                  setFilters((f) => ({
+                    ...f,
+                    flag: e.target.value || undefined,
+                    status: undefined,
+                    page: 1,
+                  }))
+                }
+              >
+                <option value="">All</option>
+                <option value="late">Late</option>
+                <option value="missedCheckout">Missed checkout</option>
+                <option value="weekendWork">Weekend work</option>
+                <option value="holidayWork">Holiday work</option>
               </select>
             </div>
             <Button variant="outline" onClick={() => refetch()}>
@@ -241,7 +378,7 @@ export function TimesheetWeb() {
             <thead className="bg-muted-bg">
               <tr>
                 <th className="w-8 p-3" />
-                {isHR && <th className="text-left p-3 font-medium">Employee</th>}
+                {showEmployeeColumn && <th className="text-left p-3 font-medium">Employee</th>}
                 <th className="text-left p-3 font-medium">Date</th>
                 <th className="text-left p-3 font-medium">Check In</th>
                 <th className="text-left p-3 font-medium">Check Out</th>
@@ -267,14 +404,22 @@ export function TimesheetWeb() {
                           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                         </button>
                       </td>
-                      {isHR && (
+                      {showEmployeeColumn && (
                         <td className="p-3">
                           {row.employee ? `${row.employee.firstName} ${row.employee.lastName}` : "—"}
                         </td>
                       )}
                       <td className="p-3">{row.date}</td>
-                      <td className="p-3">{row.checkIn ? format(new Date(row.checkIn), "h:mm a") : "—"}</td>
-                      <td className="p-3">{row.checkOut ? format(new Date(row.checkOut), "h:mm a") : "—"}</td>
+                      <td className="p-3">
+                        {row.sessions?.[0]?.checkInDisplay ??
+                          (row.checkIn ? format(new Date(row.checkIn), "h:mm a") : "—")}
+                      </td>
+                      <td className="p-3">
+                        {([...((row.sessions ?? []) as { checkOutDisplay?: string }[])]
+                          .reverse()
+                          .find((s) => s.checkOutDisplay)?.checkOutDisplay) ??
+                          (row.checkOut ? format(new Date(row.checkOut), "h:mm a") : "—")}
+                      </td>
                       <td className="p-3">
                         {Math.floor(row.workedMinutes / 60)}h {row.workedMinutes % 60}m
                       </td>
@@ -295,7 +440,7 @@ export function TimesheetWeb() {
                     </tr>
                     {open && (
                       <tr className="border-t">
-                        <td colSpan={isHR ? 9 : 8} className="p-0">
+                        <td colSpan={showEmployeeColumn ? 9 : 8} className="p-0">
                           <TimesheetRowDetail row={row} />
                         </td>
                       </tr>
@@ -305,7 +450,7 @@ export function TimesheetWeb() {
               })}
               {!data?.items.length && (
                 <tr>
-                  <td colSpan={isHR ? 9 : 8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={showEmployeeColumn ? 9 : 8} className="p-8 text-center text-muted-foreground">
                     No records in this range
                   </td>
                 </tr>
@@ -337,6 +482,106 @@ export function TimesheetWeb() {
           </div>
         )}
       </QueryBoundary>
+    </>
+  );
+}
+
+export function TimesheetWeb() {
+  const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const isHR = session?.user?.role === "hr";
+  const now = useMemo(() => new Date(), []);
+  const initial = useMemo(() => filtersFromSearchParams(searchParams, now), [searchParams, now]);
+  const employeeId = searchParams.get("employeeId") || undefined;
+  const gridMonth = monthFromRange(searchParams.get("dateFrom") || initial.dateFrom);
+
+  const [preset, setPreset] = useState<Preset>(
+    searchParams.get("dateFrom") ||
+      searchParams.get("dateTo") ||
+      searchParams.get("status") ||
+      searchParams.get("flag")
+      ? "custom"
+      : "month"
+  );
+  const [filters, setFilters] = useState<TimesheetFilters>(initial);
+
+  useEffect(() => {
+    setFilters(filtersFromSearchParams(searchParams, now));
+    if (
+      searchParams.get("status") ||
+      searchParams.get("flag") ||
+      (searchParams.get("dateFrom") && searchParams.get("dateFrom") !== rangeForPreset("month", now)?.dateFrom)
+    ) {
+      setPreset("custom");
+    }
+  }, [searchParams, now]);
+
+  const summaryMonth = monthFromRange(filters.dateFrom);
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+    isError: summaryError,
+    refetch: refetchSummary,
+  } = useHrPersonAttendanceSummary(isHR ? employeeId : undefined, summaryMonth);
+
+  if (isHR && !employeeId) {
+    return <HrPeopleTimesheetGrid month={gridMonth} />;
+  }
+
+  const backHref = `/app/timesheet?dateFrom=${format(
+    startOfMonth(parse(summaryMonth, "yyyy-MM", new Date())),
+    "yyyy-MM-dd"
+  )}&dateTo=${format(endOfMonth(parse(summaryMonth, "yyyy-MM", new Date())), "yyyy-MM-dd")}`;
+
+  const personName = summary
+    ? `${summary.firstName} ${summary.lastName}`
+    : filters.employeeId
+      ? "Employee"
+      : null;
+
+  return (
+    <div className="space-y-6">
+      {isHR && employeeId ? (
+        <div className="space-y-2">
+          <Button variant="ghost" size="sm" asChild className="-ml-2">
+            <Link href={backHref}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back to team
+            </Link>
+          </Button>
+          <PageHeader
+            title={personName ?? "Timesheet"}
+            subtitle={summary?.employeeCode ? `Code ${summary.employeeCode}` : "Person timesheet"}
+          />
+        </div>
+      ) : (
+        <PageHeader title="Timesheet" subtitle="Punch records by custom date range" />
+      )}
+
+      {isHR && employeeId && (
+        <QueryBoundary
+          isLoading={summaryLoading}
+          isError={summaryError}
+          onRetry={() => refetchSummary()}
+        >
+          <AttendanceStatTiles
+            tiles={summary?.statTiles}
+            leaveBalances={summary?.leaveBalances}
+            holidays={summary?.holidays}
+            month={summaryMonth}
+            employeeId={employeeId}
+            showMonthHeading
+          />
+        </QueryBoundary>
+      )}
+
+      <TimesheetTable
+        filters={filters}
+        setFilters={setFilters}
+        preset={preset}
+        setPreset={setPreset}
+        showEmployeeColumn={!!isHR && !employeeId}
+      />
     </div>
   );
 }

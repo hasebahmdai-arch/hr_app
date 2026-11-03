@@ -1,5 +1,6 @@
 export interface TimesheetFilters {
   status?: string;
+  flag?: string;
   manualFlag?: string;
   source?: string;
   dateFrom?: string;
@@ -26,7 +27,27 @@ export interface AttendanceStatTiles {
   holidayWork: number;
   present: number;
   onLeave: number;
+  wfhDays: number;
   attendancePct: number;
+}
+
+export interface HrPersonAttendanceSummary {
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  employeeCode: string;
+  month: string;
+  dateFrom: string;
+  dateTo: string;
+  statTiles: AttendanceStatTiles;
+  leaveBalances: {
+    leaveType: string;
+    year: number;
+    entitled: number;
+    used: number;
+    remaining: number;
+  }[];
+  holidays: { date: string; name: string }[];
 }
 
 export interface DashboardAttendanceResponse {
@@ -87,8 +108,10 @@ export interface TodaySessionResponse {
   checkOutDisplay?: string;
   shiftStart?: string;
   shiftEnd?: string;
+  breakTotalSeconds: number;
   breakTotalMinutes: number;
   activeBreakStartedAt?: string;
+  workedSecondsSoFar: number;
   workedMinutesSoFar: number;
   expectedMinutes: number;
   checkinStatus?: string;

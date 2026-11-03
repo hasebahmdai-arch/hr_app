@@ -44,6 +44,7 @@ export type AttendanceStatTiles = {
   holidayWork: number;
   present: number;
   onLeave: number;
+  wfhDays: number;
   attendancePct: number;
 };
 
@@ -78,6 +79,7 @@ export function computeStatTiles(opts: {
   let holidayWork = 0;
   let present = 0;
   let onLeave = 0;
+  let wfhDays = 0;
   let presentForPct = 0;
   let denom = 0;
 
@@ -97,6 +99,7 @@ export function computeStatTiles(opts: {
     if (record && (record.isWeekendWork || (presentDay && weekend))) weekendWork += 1;
     if (record && (record.isHolidayWork || (presentDay && holiday))) holidayWork += 1;
     if (code === "L" || code === "SL") onLeave += 1;
+    if (code === "W") wfhDays += 1;
     if (presentDay || (code && PRESENT_CODES.has(code))) present += 1;
 
     if (weekend || holiday) continue;
@@ -118,6 +121,7 @@ export function computeStatTiles(opts: {
     holidayWork,
     present,
     onLeave,
+    wfhDays,
     attendancePct: denom > 0 ? Math.round((presentForPct / denom) * 100) : 0,
   };
 }
@@ -131,6 +135,7 @@ export function aggregateStatTiles(tiles: AttendanceStatTiles[]): AttendanceStat
     holidayWork: 0,
     present: 0,
     onLeave: 0,
+    wfhDays: 0,
     attendancePct: 0,
   };
   if (!tiles.length) return sum;
@@ -142,6 +147,7 @@ export function aggregateStatTiles(tiles: AttendanceStatTiles[]): AttendanceStat
     sum.holidayWork += t.holidayWork;
     sum.present += t.present;
     sum.onLeave += t.onLeave;
+    sum.wfhDays += t.wfhDays;
     sum.attendancePct += t.attendancePct;
   }
   sum.attendancePct = Math.round(sum.attendancePct / tiles.length);

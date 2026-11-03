@@ -9,6 +9,9 @@ import {
 } from "@/lib/employee-utils";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
     const session = await requireSession();

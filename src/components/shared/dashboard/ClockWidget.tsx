@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Coffee, LogIn, LogOut, Play } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useQuery } from "@tanstack/react-query";
+import { Cake, Coffee, LogIn, LogOut, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePunchAction, useTodaySession, type PunchAction } from "@/hooks/use-timesheets";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
@@ -15,7 +18,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { TodaySessionResponse } from "@/types/api";
+import { fetcher } from "@/lib/fetcher";
+import { queryKeys } from "@/lib/query-keys";
+import type { CelebrationsResponse, TodaySessionResponse, TodayWorkSession } from "@/types/api";
 import { cn } from "@/lib/utils";
 
 function formatDuration(totalSeconds: number) {
@@ -23,6 +28,36 @@ function formatDuration(totalSeconds: number) {
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function sessionBreakSeconds(sessions: TodayWorkSession[] | undefined, nowMs: number) {
+  let total = 0;
+  for (const s of sessions ?? []) {
+    for (const b of s.breaks ?? []) {
+      const start = new Date(b.startedAt).getTime();
+      const end = b.endedAt ? new Date(b.endedAt).getTime() : nowMs;
+      total += Math.max(Math.floor((end - start) / 1000), 0);
+    }
+  }
+  return total;
+}
+
+function sessionWorkSeconds(sessions: TodayWorkSession[] | undefined, nowMs: number) {
+  let total = 0;
+  for (const s of sessions ?? []) {
+    if (!s.checkIn) continue;
+    const checkIn = new Date(s.checkIn).getTime();
+    const checkOut = s.checkOut ? new Date(s.checkOut).getTime() : nowMs;
+    const gross = Math.max(Math.floor((checkOut - checkIn) / 1000), 0);
+    let brk = 0;
+    for (const b of s.breaks ?? []) {
+      const start = new Date(b.startedAt).getTime();
+      const end = b.endedAt ? new Date(b.endedAt).getTime() : nowMs;
+      brk += Math.max(Math.floor((end - start) / 1000), 0);
+    }
+    total += Math.max(gross - brk, 0);
+  }
+  return total;
 }
 
 function useLiveTimers(session: TodaySessionResponse | undefined) {
@@ -37,67 +72,26 @@ function useLiveTimers(session: TodaySessionResponse | undefined) {
     return { workSeconds: 0, breakSeconds: 0, businessSeconds: 0 };
   }
 
-  const breakBaseSeconds = session.breakTotalMinutes * 60;
-  let breakSeconds = breakBaseSeconds;
-  if (session.state === "on_break" && session.activeBreakStartedAt) {
-    const activeMs = now - new Date(session.activeBreakStartedAt).getTime();
-    breakSeconds = breakBaseSeconds + Math.max(Math.floor(activeMs / 1000), 0);
-  }
-
-  // Server net minutes (includes open session up to last fetch); tick while working only
-  let businessSeconds = Math.max(session.workedMinutesSoFar, 0) * 60;
-  if (session.state === "working") {
-    // Approx live: refetch interval covers accuracy; add seconds since last whole minute via wall clock from open session
-    const open = [...(session.sessions ?? [])].reverse().find((s) => s.checkIn && !s.checkOut);
-    if (open?.checkIn) {
-      const closedNetSec = (session.sessions ?? [])
-        .filter((s) => s.checkOut)
-        .reduce((acc, s) => {
-          const gross = Math.floor((new Date(s.checkOut!).getTime() - new Date(s.checkIn).getTime()) / 1000);
-          const brk = (s.breaks ?? []).reduce((b, x) => {
-            if (!x.endedAt) return b;
-            return b + Math.max(Math.floor((new Date(x.endedAt).getTime() - new Date(x.startedAt).getTime()) / 1000), 0);
-          }, 0);
-          return acc + Math.max(gross - brk, 0);
-        }, 0);
-      const openGross = Math.max(Math.floor((now - new Date(open.checkIn).getTime()) / 1000), 0);
-      const openBreak = (open.breaks ?? []).reduce((b, x) => {
-        const end = x.endedAt ? new Date(x.endedAt).getTime() : now;
-        return b + Math.max(Math.floor((end - new Date(x.startedAt).getTime()) / 1000), 0);
-      }, 0);
-      businessSeconds = closedNetSec + Math.max(openGross - openBreak, 0);
-    }
-  } else if (session.state === "on_break") {
-    const open = [...(session.sessions ?? [])].reverse().find((s) => s.checkIn && !s.checkOut);
-    if (open?.checkIn) {
-      const closedNetSec = (session.sessions ?? [])
-        .filter((s) => s.checkOut)
-        .reduce((acc, s) => {
-          const gross = Math.floor((new Date(s.checkOut!).getTime() - new Date(s.checkIn).getTime()) / 1000);
-          const brk = (s.breaks ?? []).reduce((b, x) => {
-            if (!x.endedAt) return b;
-            return b + Math.max(Math.floor((new Date(x.endedAt).getTime() - new Date(x.startedAt).getTime()) / 1000), 0);
-          }, 0);
-          return acc + Math.max(gross - brk, 0);
-        }, 0);
-      const openGross = Math.max(Math.floor((now - new Date(open.checkIn).getTime()) / 1000), 0);
-      const openBreak = (open.breaks ?? []).reduce((b, x) => {
-        const end = x.endedAt ? new Date(x.endedAt).getTime() : now;
-        return b + Math.max(Math.floor((end - new Date(x.startedAt).getTime()) / 1000), 0);
-      }, 0);
-      businessSeconds = closedNetSec + Math.max(openGross - openBreak, 0);
-    }
-  }
+  const breakSeconds = sessionBreakSeconds(session.sessions, now);
+  const businessSeconds = sessionWorkSeconds(session.sessions, now);
 
   return { workSeconds: businessSeconds, breakSeconds, businessSeconds };
 }
 
 export function ClockWidget() {
+  const { data: auth } = useSession();
+  const isHR = auth?.user?.role === "hr";
   const { data: session, isLoading, isError, refetch } = useTodaySession();
   const punch = usePunchAction();
   const { workSeconds, breakSeconds, businessSeconds } = useLiveTimers(session);
   const [clock, setClock] = useState(format(new Date(), "h:mm:ss a"));
   const [confirmCheckOutOpen, setConfirmCheckOutOpen] = useState(false);
+
+  const { data: celebrations } = useQuery({
+    queryKey: queryKeys.dashboard.celebrations(),
+    queryFn: () => fetcher<CelebrationsResponse>("/api/dashboard/celebrations"),
+    enabled: isHR,
+  });
 
   useEffect(() => {
     const id = setInterval(() => setClock(format(new Date(), "h:mm:ss a")), 1000);
@@ -111,7 +105,19 @@ export function ClockWidget() {
 
   const state = session?.state ?? "not_started";
   const busy = punch.isPending;
+  const punchAction = punch.variables?.action;
   const canCheckIn = state === "not_started" || state === "idle";
+  const loadingAction = (a: PunchAction) => busy && punchAction === a;
+
+  const celebrationLines: string[] = [];
+  if (isHR && celebrations) {
+    for (const b of celebrations.birthdays.slice(0, 4)) {
+      celebrationLines.push(`🎂 ${b.firstName} ${b.lastName} — ${b.date}`);
+    }
+    for (const a of celebrations.anniversaries.slice(0, 4)) {
+      celebrationLines.push(`🎉 ${a.firstName} ${a.lastName} — ${a.milestone}y · ${a.date}`);
+    }
+  }
 
   return (
     <Card className="border-0 shadow-elevated overflow-hidden">
@@ -147,32 +153,35 @@ export function ClockWidget() {
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                <Button
+                <LoadingButton
                   className={cn("min-h-[48px] bg-success hover:bg-success/90", !canCheckIn && "opacity-40")}
+                  loading={loadingAction("check_in")}
                   disabled={busy || !canCheckIn}
                   onClick={() => handleAction("check_in")}
                 >
-                  <LogIn className="h-4 w-4 mr-2" />
-                  {busy ? "Saving..." : "Check In"}
-                </Button>
-                <Button
+                  {!loadingAction("check_in") && <LogIn className="h-4 w-4 mr-2" />}
+                  Check In
+                </LoadingButton>
+                <LoadingButton
                   variant="outline"
                   className={cn("min-h-[48px] border-primary text-primary hover:bg-primary-tint")}
+                  loading={loadingAction("break_start")}
                   disabled={busy || state !== "working"}
                   onClick={() => handleAction("break_start")}
                 >
-                  <Coffee className="h-4 w-4 mr-2" />
-                  {busy ? "Saving..." : "Start Break"}
-                </Button>
-                <Button
+                  {!loadingAction("break_start") && <Coffee className="h-4 w-4 mr-2" />}
+                  Start Break
+                </LoadingButton>
+                <LoadingButton
                   variant="outline"
                   className="min-h-[48px]"
+                  loading={loadingAction("break_end")}
                   disabled={busy || state !== "on_break"}
                   onClick={() => handleAction("break_end")}
                 >
-                  <Play className="h-4 w-4 mr-2" />
-                  {busy ? "Saving..." : "End Break"}
-                </Button>
+                  {!loadingAction("break_end") && <Play className="h-4 w-4 mr-2" />}
+                  End Break
+                </LoadingButton>
                 <Button
                   variant="destructive"
                   className="min-h-[48px]"
@@ -198,27 +207,38 @@ export function ClockWidget() {
                 </p>
               </div>
 
+              {isHR && (
+                <div className="w-full max-w-sm rounded-lg bg-background/80 p-4 text-left border border-border/40">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1">
+                    <Cake className="h-3 w-3" /> Celebrations
+                  </p>
+                  {celebrationLines.length ? (
+                    <ul className="space-y-1">
+                      {celebrationLines.slice(0, 5).map((line) => (
+                        <li key={line} className="text-xs text-foreground truncate">{line}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No upcoming celebrations</p>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-                {session?.isLate ? (
-                  <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Late check-in</p>
-                    <p className="text-sm font-semibold text-warning">Yes</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Check-in</p>
-                      <p className="text-sm font-semibold">
-                        {session?.checkInDisplay ?? "—"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Break time</p>
-                      <p className="text-sm font-semibold tabular-nums">{formatDuration(breakSeconds)}</p>
-                    </div>
-                  </>
-                )}
                 <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Check-in</p>
+                  <p className="text-sm font-semibold">
+                    {session?.checkInDisplay ?? "—"}
+                    {session?.isLate ? (
+                      <span className="ml-1 text-[10px] font-medium text-warning align-middle">Late</span>
+                    ) : null}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Break time</p>
+                  <p className="text-sm font-semibold tabular-nums">{formatDuration(breakSeconds)}</p>
+                </div>
+                <div className="rounded-lg bg-background/80 p-4 text-center border border-border/40 col-span-2">
                   <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">Work hours</p>
                   <p className="text-sm font-semibold tabular-nums text-primary">{formatDuration(businessSeconds)}</p>
                 </div>
@@ -235,10 +255,17 @@ export function ClockWidget() {
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="gap-2 sm:gap-0">
-                <Button variant="outline" onClick={() => setConfirmCheckOutOpen(false)}>Cancel</Button>
-                <Button variant="destructive" disabled={busy} onClick={() => handleAction("check_out")}>
-                  {busy ? "Checking out..." : "Check Out"}
+                <Button variant="outline" onClick={() => setConfirmCheckOutOpen(false)} disabled={busy}>
+                  Cancel
                 </Button>
+                <LoadingButton
+                  variant="destructive"
+                  loading={loadingAction("check_out")}
+                  disabled={busy && punchAction !== "check_out"}
+                  onClick={() => handleAction("check_out")}
+                >
+                  Check Out
+                </LoadingButton>
               </DialogFooter>
             </DialogContent>
           </Dialog>

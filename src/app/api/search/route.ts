@@ -4,6 +4,9 @@ import connectDB from "@/lib/db";
 import { CompanyDocument, Employee, REQUEST_MODELS } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(req: Request) {
   try {
     const session = await requireSession();

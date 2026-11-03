@@ -35,7 +35,7 @@ export const MOBILE_NAV: {
   { href: "/app/timesheet", label: "Timesheet", icon: "ClipboardList" },
   { href: "/app/requests", label: "Requests", icon: "Plus", isFab: true },
   { href: "/app/people", label: "People", icon: "Users", roles: ["hr"] },
-  { href: "/app/requests/leave", label: "Leave", icon: "CalendarDays", roles: ["employee"] },
+  { href: "/app/requests/leave", label: "Leave", icon: "CalendarDays" },
   { href: "/app/profile", label: "Profile", icon: "User" },
 ] as const;
 

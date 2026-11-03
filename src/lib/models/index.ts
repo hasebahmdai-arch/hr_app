@@ -60,7 +60,7 @@ export const EmployeeSchema = new Schema(
     banks: { bankName: String, iban: String, branchCode: String },
     leaveBalances: [
       {
-        leaveType: { type: String, enum: ["Sick", "Casual"], required: true },
+        leaveType: { type: String, enum: ["Sick", "Casual", "WFH"], required: true },
         year: { type: Number, required: true },
         entitled: { type: Number, required: true },
         used: { type: Number, default: 0 },
@@ -170,6 +170,7 @@ export const ReimbursementRequestSchema = new Schema(
     ...baseRequestFields,
     amount: Number,
     reason: { type: String, required: true },
+    expenseDate: Date,
     category: String,
     receiptFileIds: [Schema.Types.ObjectId],
   },
@@ -186,9 +187,17 @@ export const LoanRequestSchema = new Schema(
   { timestamps: true }
 );
 export const WfhRequestSchema = new Schema(
-  { ...baseRequestFields, dates: [Date], reason: String },
+  {
+    ...baseRequestFields,
+    dates: [Date],
+    reason: String,
+    daysRequested: { type: Number, default: 0 },
+    daysDeductedSoFar: { type: Number, default: 0 },
+    deductedDates: { type: [String], default: [] },
+  },
   { timestamps: true }
 );
+WfhRequestSchema.index({ status: 1, daysDeductedSoFar: 1 });
 /** Kept for historical documents; not in REQUEST_TYPES. */
 export const OfficialDutyRequestSchema = new Schema(
   { ...baseRequestFields, location: String, dates: [Date] },

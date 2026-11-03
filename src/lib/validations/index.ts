@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { REQUEST_TYPES } from "@/lib/constants";
+import { todayInCompanyTz } from "@/lib/timesheet-auto-checkout";
 
 export const requestTypeSchema = z.enum(REQUEST_TYPES);
 
 export const gridFSBucketSchema = z.enum(["avatars", "documents", "receipts", "announcements"]);
 
 export const requestActionSchema = z.object({
-  action: z.enum(["approve", "reject", "request_cancel", "cancel"]),
+  action: z.enum(["approve", "reject", "request_cancel", "cancel", "update"]),
   reason: z.string().optional(),
+  fields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const departmentSchema = z.object({
@@ -54,14 +56,13 @@ const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 export const isoDateSchema = z.string().regex(isoDateRegex, "Date must be YYYY-MM-DD");
 
 function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+  const [y, m, day] = todayInCompanyTz().split("-").map(Number);
+  return new Date(y!, m! - 1, day!);
 }
 
 function parseIsoDate(value: string) {
   const [y, m, day] = value.split("-").map(Number);
-  return new Date(y, m - 1, day);
+  return new Date(y!, m! - 1, day!);
 }
 
 /** Date today or in the future (planning requests). */
@@ -130,6 +131,7 @@ export const createEmployeeSchema = z.object({
     .optional(),
   sickLeaveDays: z.number().int().min(0).optional(),
   casualLeaveDays: z.number().int().min(0).optional(),
+  wfhLeaveDays: z.number().int().min(0).optional(),
 });
 
 export const notificationPatchSchema = z.object({
@@ -182,11 +184,31 @@ export function createRequestBodySchema(type: z.infer<typeof requestTypeSchema>)
           }
         });
     case "reimbursement":
-      return base.extend({
-        amount: z.number().positive(),
-        reason: z.string().min(1),
-        receiptFileIds: z.array(z.string()).optional(),
-      });
+      return base
+        .extend({
+          amount: z.number().positive(),
+          reason: z.string().min(1),
+          expenseDate: z.string().datetime({ message: "Valid date/time is required" }),
+          receiptFileIds: z.array(z.string()).optional(),
+        })
+        .superRefine((data, ctx) => {
+          const ts = new Date(data.expenseDate);
+          if (Number.isNaN(ts.getTime())) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Invalid expense date/time",
+              path: ["expenseDate"],
+            });
+            return;
+          }
+          if (ts.getTime() > Date.now() + 60_000) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Expense time cannot be in the future",
+              path: ["expenseDate"],
+            });
+          }
+        });
     case "loans":
       return base.extend({
         salaryCount: z.number().int().min(1).max(3),

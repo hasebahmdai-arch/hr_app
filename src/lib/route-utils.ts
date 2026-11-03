@@ -1,5 +1,21 @@
 import { apiError } from "@/lib/api-response";
 
+function isDbUnavailable(error: unknown) {
+  const err = error as { name?: string; message?: string; cause?: { message?: string; code?: string } } | null;
+  const name = err?.name ?? "";
+  const message = `${err?.message ?? ""} ${err?.cause?.message ?? ""} ${err?.cause?.code ?? ""}`;
+  if (
+    name === "MongoServerSelectionError" ||
+    name === "MongoNetworkError" ||
+    name === "MongooseServerSelectionError"
+  ) {
+    return true;
+  }
+  return /querySrv|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|MongoNetworkError|Server selection timed out|getaddrinfo/i.test(
+    message
+  );
+}
+
 export function handleRouteError(error: unknown) {
   if (error instanceof Error) {
     if (error.message === "UNAUTHORIZED") return apiError("Unauthorized", "UNAUTHORIZED", 401);
@@ -13,6 +29,14 @@ export function handleRouteError(error: unknown) {
     if (error.message === "INVALID_SHIFT") return apiError("Invalid shift", "VALIDATION_ERROR", 400);
     if (error.message === "BOOTSTRAP_DISABLED") return apiError("Setup already completed", "BOOTSTRAP_DISABLED", 403);
     if (error.message === "INVALID_BOOTSTRAP_SECRET") return apiError("Invalid bootstrap secret", "INVALID_BOOTSTRAP_SECRET", 403);
+  }
+  if (isDbUnavailable(error)) {
+    console.error(error);
+    return apiError(
+      "Database unavailable. Check network, DNS, or MongoDB Atlas IP allowlist.",
+      "DB_UNAVAILABLE",
+      503
+    );
   }
   console.error(error);
   return apiError("Internal server error", "INTERNAL_ERROR", 500);

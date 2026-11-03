@@ -11,6 +11,7 @@ import { REQUEST_LABELS } from "@/lib/navigation";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,6 +47,7 @@ export function RequestsView({ type }: RequestsViewProps) {
   const [status, setStatus] = useState(initialTab);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
   const { data, isLoading, isError, refetch } = useRequests(type, status, page);
   const create = useCreateRequest(type);
@@ -62,39 +64,68 @@ export function RequestsView({ type }: RequestsViewProps) {
   }, [urlStatus]);
 
   useEffect(() => {
-    if (modalOpen) {
+    if (modalOpen && !editingId) {
       setForm(defaultForm(type));
       setWfhDates([todayIso()]);
       setFormError("");
     }
-  }, [modalOpen, type]);
+  }, [modalOpen, type, editingId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
     try {
       const body = buildCreateBody(type, form, wfhDates);
-      await create.mutateAsync(body);
+      if (editingId) {
+        await action.mutateAsync({ id: editingId, action: "update", fields: body });
+      } else {
+        await create.mutateAsync(body);
+      }
       setModalOpen(false);
+      setEditingId(null);
       setForm(defaultForm(type));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to submit request");
     }
   }
 
+  function openEdit(req: Record<string, unknown>) {
+    setEditingId(String(req._id));
+    setForm(formFromRequest(type, req));
+    if (type === "wfh" && Array.isArray(req.dates)) {
+      setWfhDates(
+        (req.dates as (string | Date)[]).map((d) => format(new Date(d), "yyyy-MM-dd"))
+      );
+    }
+    setFormError("");
+    setModalOpen(true);
+  }
+
   const actionBusy = action.isPending;
+  const actionFor = (id: string, act: string) =>
+    action.isPending && action.variables?.id === id && action.variables?.action === act;
   const reasonRequired = type === "reimbursement";
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl lg:text-2xl font-semibold">{REQUEST_LABELS[type]} Requests</h1>
-        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <Dialog
+          open={modalOpen}
+          onOpenChange={(open) => {
+            setModalOpen(open);
+            if (!open) setEditingId(null);
+          }}
+        >
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" />New</Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>New {REQUEST_LABELS[type]} Request</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>
+                {editingId ? "Edit" : "New"} {REQUEST_LABELS[type]} Request
+              </DialogTitle>
+            </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
               <CreateFormFields
                 type={type}
@@ -114,9 +145,18 @@ export function RequestsView({ type }: RequestsViewProps) {
                 </div>
               )}
               {formError && <p className="text-sm text-red-600">{formError}</p>}
-              <Button type="submit" className="w-full" disabled={create.isPending}>
-                {create.isPending ? "Submitting..." : "Submit Request"}
-              </Button>
+              <LoadingButton
+                type="submit"
+                className="w-full"
+                loading={
+                  create.isPending ||
+                  (editingId
+                    ? actionFor(editingId, "update")
+                    : false)
+                }
+              >
+                {editingId ? "Save changes" : "Submit Request"}
+              </LoadingButton>
             </form>
           </DialogContent>
         </Dialog>
@@ -154,8 +194,8 @@ export function RequestsView({ type }: RequestsViewProps) {
                     {type === "reimbursement" && typeof (req as unknown as { amount?: number }).amount === "number" && (
                       <p className="text-sm mt-1">
                         Amount: {(req as unknown as { amount: number }).amount}
-                        {(req as unknown as { reason?: string }).reason
-                          ? ` · ${(req as unknown as { reason: string }).reason}`
+                        {(req as unknown as { expenseDate?: string }).expenseDate
+                          ? ` · ${format(new Date((req as unknown as { expenseDate: string }).expenseDate), "MMM d, yyyy h:mm a")}`
                           : ""}
                       </p>
                     )}
@@ -170,29 +210,94 @@ export function RequestsView({ type }: RequestsViewProps) {
                           : ""}
                       </p>
                     )}
+                    {type === "wfh" && Array.isArray((req as unknown as { dates?: string[] }).dates) && (
+                      <p className="text-sm mt-1">
+                        {(req as unknown as { dates: string[] }).dates
+                          .map((d) => format(new Date(d), "MMM d"))
+                          .join(", ")}
+                      </p>
+                    )}
+                    {type === "punch" && (req as unknown as { punchType?: string }).punchType && (
+                      <p className="text-sm mt-1">
+                        {(req as unknown as { punchType: string }).punchType === "check_out"
+                          ? "Check out"
+                          : "Check in"}
+                        {(req as unknown as { requestedTimestamp?: string }).requestedTimestamp
+                          ? ` · ${format(new Date((req as unknown as { requestedTimestamp: string }).requestedTimestamp), "MMM d, h:mm a")}`
+                          : ""}
+                      </p>
+                    )}
+                    {(req as unknown as { reason?: string }).reason ? (
+                      <p className="text-sm mt-1 text-muted-foreground">
+                        Reason: {(req as unknown as { reason: string }).reason}
+                      </p>
+                    ) : null}
                   </div>
                   <StatusBadge status={req.status} />
                 </div>
                 <div className="flex gap-2 mt-3 flex-wrap">
                   {isHR && req.status === "PENDING" && (
                     <>
-                      <Button size="sm" onClick={() => action.mutate({ id: req._id, action: "approve" })} disabled={actionBusy}>
-                        {actionBusy ? "Approving..." : "Approve"}
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => action.mutate({ id: req._id, action: "reject" })} disabled={actionBusy}>
-                        {actionBusy ? "Rejecting..." : "Reject"}
-                      </Button>
+                      <LoadingButton
+                        size="sm"
+                        loading={actionFor(req._id, "approve")}
+                        disabled={actionBusy && !actionFor(req._id, "approve")}
+                        onClick={() => action.mutate({ id: req._id, action: "approve" })}
+                      >
+                        Approve
+                      </LoadingButton>
+                      <LoadingButton
+                        size="sm"
+                        variant="destructive"
+                        loading={actionFor(req._id, "reject")}
+                        disabled={actionBusy && !actionFor(req._id, "reject")}
+                        onClick={() => action.mutate({ id: req._id, action: "reject" })}
+                      >
+                        Reject
+                      </LoadingButton>
                     </>
                   )}
                   {isHR && req.status === "CANCELING" && (
-                    <Button size="sm" onClick={() => action.mutate({ id: req._id, action: "approve" })} disabled={actionBusy}>
-                      {actionBusy ? "Processing..." : "Approve Cancel"}
-                    </Button>
+                    <LoadingButton
+                      size="sm"
+                      loading={actionFor(req._id, "approve")}
+                      disabled={actionBusy && !actionFor(req._id, "approve")}
+                      onClick={() => action.mutate({ id: req._id, action: "approve" })}
+                    >
+                      Approve Cancel
+                    </LoadingButton>
                   )}
                   {!isHR && req.status === "PENDING" && (
-                    <Button size="sm" variant="outline" onClick={() => action.mutate({ id: req._id, action: "request_cancel" })} disabled={actionBusy}>
-                      {actionBusy ? "Submitting..." : "Request Cancel"}
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEdit(req as unknown as Record<string, unknown>)}
+                        disabled={actionBusy}
+                      >
+                        Edit
+                      </Button>
+                      <LoadingButton
+                        size="sm"
+                        variant="outline"
+                        loading={actionFor(req._id, "request_cancel")}
+                        disabled={actionBusy && !actionFor(req._id, "request_cancel")}
+                        onClick={() => action.mutate({ id: req._id, action: "request_cancel" })}
+                      >
+                        Request Cancel
+                      </LoadingButton>
+                    </>
+                  )}
+                  {!isHR && req.status === "COMPLETED" && (type === "punch" || type === "leave" || type === "wfh") && (
+                    <LoadingButton
+                      size="sm"
+                      variant="outline"
+                      loading={actionFor(req._id, "request_cancel")}
+                      disabled={actionBusy && !actionFor(req._id, "request_cancel")}
+                      onClick={() => action.mutate({ id: req._id, action: "request_cancel" })}
+                    >
+                      Request Cancel
+                    </LoadingButton>
                   )}
                 </div>
               </CardContent>
@@ -215,9 +320,33 @@ export function RequestsView({ type }: RequestsViewProps) {
 function defaultForm(type: RequestType): Record<string, string> {
   if (type === "punch") return { punchType: "check_in", requestedTimestamp: "", reason: "" };
   if (type === "loans") return { salaryCount: "1", purpose: "", reason: "" };
-  if (type === "reimbursement") return { amount: "", reason: "" };
+  if (type === "reimbursement") return { amount: "", expenseDate: new Date().toISOString(), reason: "" };
   if (type === "leave") return { leaveType: "Casual", startDate: todayIso(), endDate: todayIso(), reason: "" };
   return { reason: "" };
+}
+
+function formFromRequest(type: RequestType, req: Record<string, unknown>): Record<string, string> {
+  const base = defaultForm(type);
+  base.reason = typeof req.reason === "string" ? req.reason : "";
+  if (type === "punch") {
+    base.punchType = String(req.punchType ?? "check_in");
+    base.requestedTimestamp = req.requestedTimestamp
+      ? new Date(req.requestedTimestamp as string).toISOString()
+      : "";
+  } else if (type === "leave") {
+    base.leaveType = String(req.leaveType ?? "Casual");
+    base.startDate = req.startDate ? format(new Date(req.startDate as string), "yyyy-MM-dd") : todayIso();
+    base.endDate = req.endDate ? format(new Date(req.endDate as string), "yyyy-MM-dd") : todayIso();
+  } else if (type === "reimbursement") {
+    base.amount = String(req.amount ?? "");
+    base.expenseDate = req.expenseDate
+      ? new Date(req.expenseDate as string).toISOString()
+      : new Date().toISOString();
+  } else if (type === "loans") {
+    base.salaryCount = String(req.salaryCount ?? "1");
+    base.purpose = String(req.purpose ?? "");
+  }
+  return base;
 }
 
 function CreateFormFields({
@@ -269,10 +398,22 @@ function CreateFormFields({
       return <LeaveFormFields form={form} set={set} today={today} />;
     case "reimbursement":
       return (
-        <div>
-          <Label>Amount</Label>
-          <Input type="number" min="0.01" step="0.01" value={form.amount ?? ""} onChange={(e) => set("amount", e.target.value)} required />
-        </div>
+        <>
+          <div>
+            <Label>Amount</Label>
+            <Input type="number" min="0.01" step="0.01" value={form.amount ?? ""} onChange={(e) => set("amount", e.target.value)} required />
+          </div>
+          <div>
+            <Label>Expense date & time</Label>
+            <Input
+              type="datetime-local"
+              max={maxNow}
+              value={form.expenseDate ? format(new Date(form.expenseDate), "yyyy-MM-dd'T'HH:mm") : ""}
+              onChange={(e) => set("expenseDate", e.target.value ? new Date(e.target.value).toISOString() : "")}
+              required
+            />
+          </div>
+        </>
       );
     case "loans":
       return (
@@ -294,48 +435,20 @@ function CreateFormFields({
         </>
       );
     case "wfh":
-      return (
-        <div className="space-y-3">
-          <Label>Dates (today or future)</Label>
-          {wfhDates.map((d, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <Input
-                type="date"
-                min={today}
-                value={d}
-                onChange={(e) => {
-                  const next = [...wfhDates];
-                  next[i] = e.target.value;
-                  setWfhDates(next);
-                }}
-                required
-              />
-              {wfhDates.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setWfhDates(wfhDates.filter((_, j) => j !== i))}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setWfhDates([...wfhDates, today])}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Add date
-          </Button>
-        </div>
-      );
+      return <WfhFormFields wfhDates={wfhDates} setWfhDates={setWfhDates} today={today} />;
     default:
       return null;
   }
+}
+
+function useLeaveBalancesMe() {
+  return useQuery({
+    queryKey: ["leave-balances", "me"],
+    queryFn: () =>
+      fetcher<{
+        balances: { leaveType: string; remaining: number; available: number; entitled: number }[];
+      }>("/api/leave-balances/me"),
+  });
 }
 
 function LeaveFormFields({
@@ -347,13 +460,7 @@ function LeaveFormFields({
   set: (k: string, v: string) => void;
   today: string;
 }) {
-  const { data } = useQuery({
-    queryKey: ["leave-balances", "me"],
-    queryFn: () =>
-      fetcher<{
-        balances: { leaveType: string; remaining: number; available: number; entitled: number }[];
-      }>("/api/leave-balances/me"),
-  });
+  const { data } = useLeaveBalancesMe();
   const selected = data?.balances.find((b) => b.leaveType === (form.leaveType || "Casual"));
 
   return (
@@ -387,6 +494,64 @@ function LeaveFormFields({
   );
 }
 
+function WfhFormFields({
+  wfhDates,
+  setWfhDates,
+  today,
+}: {
+  wfhDates: string[];
+  setWfhDates: (d: string[]) => void;
+  today: string;
+}) {
+  const { data } = useLeaveBalancesMe();
+  const wfh = data?.balances.find((b) => b.leaveType === "WFH");
+
+  return (
+    <div className="space-y-3">
+      {wfh && (
+        <p className="text-xs text-muted-foreground">
+          WFH available: {wfh.available} of {wfh.entitled} days
+        </p>
+      )}
+      <Label>Dates (today or future)</Label>
+      {wfhDates.map((d, i) => (
+        <div key={i} className="flex gap-2 items-center">
+          <Input
+            type="date"
+            min={today}
+            value={d}
+            onChange={(e) => {
+              const next = [...wfhDates];
+              next[i] = e.target.value;
+              setWfhDates(next);
+            }}
+            required
+          />
+          {wfhDates.length > 1 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setWfhDates(wfhDates.filter((_, j) => j !== i))}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setWfhDates([...wfhDates, today])}
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add date
+      </Button>
+    </div>
+  );
+}
+
 function buildCreateBody(
   type: RequestType,
   form: Record<string, string>,
@@ -402,7 +567,7 @@ function buildCreateBody(
     case "leave":
       return { leaveType: form.leaveType, startDate: form.startDate, endDate: form.endDate, reason: form.reason || undefined };
     case "reimbursement":
-      return { amount: Number(form.amount), reason: form.reason };
+      return { amount: Number(form.amount), expenseDate: form.expenseDate, reason: form.reason };
     case "loans":
       return {
         salaryCount: Number(form.salaryCount),

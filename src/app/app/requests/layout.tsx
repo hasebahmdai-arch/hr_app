@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { REQUEST_TYPES } from "@/lib/constants";
 import { REQUEST_LABELS } from "@/lib/navigation";
@@ -14,7 +14,6 @@ import type { RequestType } from "@/lib/constants";
 
 export default function RequestsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { data: session } = useSession();
   const isHR = session?.user?.role === "hr";
   const { byType } = useUnreadNotificationsByType();
@@ -26,38 +25,39 @@ export default function RequestsLayout({ children }: { children: React.ReactNode
   const activeType = typeMatch?.[1] as RequestType | undefined;
 
   useEffect(() => {
-    if (isHR && activeType && REQUEST_TYPES.includes(activeType)) {
-      router.replace("/app/requests");
-    }
-  }, [isHR, activeType, router]);
-
-  useEffect(() => {
-    if (!isHR && activeType && REQUEST_TYPES.includes(activeType)) {
+    if (activeType && REQUEST_TYPES.includes(activeType)) {
       markReadMutate.current({ typePrefix: requestTypeToNotificationPrefix(activeType) });
     }
-  }, [isHR, activeType]);
-
-  if (isHR && activeType) return null;
+  }, [activeType]);
 
   return (
     <div className="space-y-4">
-      {!isHR && (
-        <div className="flex gap-2 overflow-x-auto pb-2 lg:hidden">
-          {REQUEST_TYPES.map((t) => (
-            <Link
-              key={t}
-              href={`/app/requests/${t}`}
-              className={cn(
-                "whitespace-nowrap px-3 py-1.5 rounded-full text-sm border flex items-center gap-1.5",
-                pathname.includes(`/requests/${t}`) ? "bg-primary text-white border-primary" : "bg-white"
-              )}
-            >
-              {REQUEST_LABELS[t]}
-              <NavAttentionDot show={(byType[t] ?? 0) > 0} />
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="flex gap-2 overflow-x-auto pb-2 lg:hidden">
+        {isHR && (
+          <Link
+            href="/app/requests"
+            className={cn(
+              "whitespace-nowrap px-3 py-1.5 rounded-full text-sm border",
+              pathname === "/app/requests" ? "bg-primary text-white border-primary" : "bg-white"
+            )}
+          >
+            Inbox
+          </Link>
+        )}
+        {REQUEST_TYPES.map((t) => (
+          <Link
+            key={t}
+            href={`/app/requests/${t}`}
+            className={cn(
+              "whitespace-nowrap px-3 py-1.5 rounded-full text-sm border flex items-center gap-1.5",
+              pathname.includes(`/requests/${t}`) ? "bg-primary text-white border-primary" : "bg-white"
+            )}
+          >
+            {REQUEST_LABELS[t]}
+            <NavAttentionDot show={(byType[t] ?? 0) > 0} />
+          </Link>
+        ))}
+      </div>
       {children}
     </div>
   );

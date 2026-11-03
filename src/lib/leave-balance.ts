@@ -1,12 +1,14 @@
-import { eachDayOfInterval, format } from "date-fns";
+import { eachDayOfInterval } from "date-fns";
 import { Employee, LeaveRequest } from "@/lib/models";
+import { calendarDateString } from "@/lib/timesheet-auto-checkout";
 
-export const LEAVE_TYPES = ["Sick", "Casual"] as const;
+export const LEAVE_TYPES = ["Sick", "Casual", "WFH"] as const;
 export type LeaveBalanceType = (typeof LEAVE_TYPES)[number];
 
 export const LEAVE_DEFAULTS: Record<LeaveBalanceType, number> = {
   Sick: 8,
   Casual: 10,
+  WFH: 2,
 };
 
 export type LeaveBalanceRow = {
@@ -25,8 +27,7 @@ export function countLeaveDays(start: Date, end: Date) {
 }
 
 export function leaveYearFromDate(date: Date | string) {
-  if (typeof date === "string") return Number(date.slice(0, 4));
-  return date.getFullYear();
+  return Number(calendarDateString(date).slice(0, 4));
 }
 
 export function summarizeBalances(balances: LeaveBalanceRow[] | undefined, year: number) {
@@ -130,19 +131,25 @@ export async function getAvailableRemaining(
   const filter: Record<string, unknown> = {
     employeeId,
     leaveType,
-    status: "COMPLETED",
-    $expr: { $lt: ["$daysDeductedSoFar", "$daysRequested"] },
+    status: { $in: ["PENDING", "COMPLETED"] },
   };
   if (excludeRequestId) filter._id = { $ne: excludeRequestId };
 
   const open = await LeaveRequest.find(filter)
-    .select("daysRequested daysDeductedSoFar startDate endDate")
+    .select("status daysRequested daysDeductedSoFar startDate endDate")
     .lean();
 
   let reserved = 0;
   for (const req of open) {
     const startYear = leaveYearFromDate(new Date(req.startDate as Date));
     if (startYear !== year) continue;
+    if (req.status === "PENDING") {
+      reserved += Number(req.daysRequested ?? 0) || countLeaveDays(
+        new Date(req.startDate as Date),
+        new Date(req.endDate as Date)
+      );
+      continue;
+    }
     const requested = Number(req.daysRequested ?? 0);
     const deducted = Number(req.daysDeductedSoFar ?? 0);
     reserved += Math.max(requested - deducted, 0);
@@ -158,7 +165,7 @@ export async function assertCanTake(
   end: Date,
   excludeRequestId?: string
 ) {
-  if (!isLeaveBalanceType(leaveType)) {
+  if (!isLeaveBalanceType(leaveType) || leaveType === "WFH") {
     throw new Error("Leave type must be Sick or Casual");
   }
   const days = countLeaveDays(start, end);
@@ -168,6 +175,60 @@ export async function assertCanTake(
     throw new Error(`Insufficient ${leaveType} leave remaining (${available} left, ${days} requested)`);
   }
   return { days, year, leaveType };
+}
+
+export async function getAvailableWfhRemaining(
+  employeeId: string,
+  year: number,
+  excludeRequestId?: string
+) {
+  const balances = await ensureYearBalances(employeeId, year);
+  const remaining = getRemaining(balances, "WFH", year);
+
+  const { WfhRequest } = await import("@/lib/models");
+  const filter: Record<string, unknown> = {
+    employeeId,
+    status: { $in: ["PENDING", "COMPLETED"] },
+  };
+  if (excludeRequestId) filter._id = { $ne: excludeRequestId };
+
+  const open = await WfhRequest.find(filter)
+    .select("dates status daysRequested daysDeductedSoFar")
+    .lean();
+  let reserved = 0;
+  for (const req of open) {
+    const dates = (req.dates as Date[] | undefined) ?? [];
+    const yearDates = dates.filter((d) => leaveYearFromDate(new Date(d)) === year).length;
+    if (!yearDates) continue;
+    if (req.status === "PENDING") {
+      reserved += yearDates;
+    } else {
+      // COMPLETED: used balance already includes deducted; reserve undeducted only
+      const deducted = Number(req.daysDeductedSoFar ?? 0);
+      const requested = Number(req.daysRequested ?? yearDates);
+      reserved += Math.max(requested - deducted, 0);
+    }
+  }
+  return Math.max(remaining - reserved, 0);
+}
+
+export async function assertCanTakeWfh(
+  employeeId: string,
+  dates: Date[],
+  excludeRequestId?: string
+) {
+  if (!dates.length) throw new Error("At least one WFH date is required");
+  const year = leaveYearFromDate(dates[0]!);
+  for (const d of dates) {
+    if (leaveYearFromDate(d) !== year) {
+      throw new Error("All WFH dates must be in the same calendar year");
+    }
+  }
+  const available = await getAvailableWfhRemaining(employeeId, year, excludeRequestId);
+  if (dates.length > available) {
+    throw new Error(`Insufficient WFH days remaining (${available} left, ${dates.length} requested)`);
+  }
+  return { days: dates.length, year };
 }
 
 export async function deductOneDay(employeeId: string, leaveType: LeaveBalanceType, year: number) {
@@ -198,17 +259,19 @@ export async function creditDays(
 
 export function datesInLeaveRange(start: Date, end: Date, throughDateStr: string) {
   return eachDayOfInterval({ start, end })
-    .map((d) => format(d, "yyyy-MM-dd"))
+    .map((d) => calendarDateString(d))
     .filter((d) => d <= throughDateStr);
 }
 
 export function defaultLeaveBalancesForCreate(
   sickEntitled = LEAVE_DEFAULTS.Sick,
   casualEntitled = LEAVE_DEFAULTS.Casual,
+  wfhEntitled = LEAVE_DEFAULTS.WFH,
   year = new Date().getFullYear()
 ): LeaveBalanceRow[] {
   return [
     { leaveType: "Sick", year, entitled: sickEntitled, used: 0 },
     { leaveType: "Casual", year, entitled: casualEntitled, used: 0 },
+    { leaveType: "WFH", year, entitled: wfhEntitled, used: 0 },
   ];
 }

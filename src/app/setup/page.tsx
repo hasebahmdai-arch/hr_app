@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { AuthLayout } from "@/components/shared/AuthLayout";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/shared/PasswordInput";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -85,7 +86,7 @@ export default function SetupPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="secret">Bootstrap Secret</Label>
-          <Input id="secret" type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} required />
+          <PasswordInput id="secret" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} required />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -103,12 +104,12 @@ export default function SetupPage() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={8} required />
+          <PasswordInput id="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={8} required />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Creating..." : "Create HR Account"}
-        </Button>
+        <LoadingButton type="submit" className="w-full" loading={loading}>
+          Create HR Account
+        </LoadingButton>
       </form>
     </AuthLayout>
   );

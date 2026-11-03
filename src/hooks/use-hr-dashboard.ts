@@ -4,7 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { fetcher } from "@/lib/fetcher";
 import { queryKeys } from "@/lib/query-keys";
-import type { HrAttendanceReport, HrDashboardOverview, HrRequestsSummary } from "@/types/api";
+import type {
+  HrAttendanceReport,
+  HrDashboardOverview,
+  HrPersonAttendanceSummary,
+  HrRequestsSummary,
+} from "@/types/api";
 
 export function useHrDashboard(month: string, departmentId?: string) {
   const overview = useQuery({
@@ -46,6 +51,17 @@ export function downloadHrReport(type: "attendance" | "requests" | "employees", 
   const params = new URLSearchParams({ type, month });
   if (departmentId) params.set("departmentId", departmentId);
   window.open(`/api/hr/reports/export?${params}`, "_blank");
+}
+
+export function useHrPersonAttendanceSummary(employeeId: string | undefined, month: string) {
+  return useQuery({
+    queryKey: queryKeys.hrDashboard.personAttendance(employeeId ?? "", month),
+    queryFn: () =>
+      fetcher<HrPersonAttendanceSummary>(
+        `/api/hr/people/${employeeId}/attendance-summary?month=${month}`
+      ),
+    enabled: Boolean(employeeId),
+  });
 }
 
 export function currentMonth() {

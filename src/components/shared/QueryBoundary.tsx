@@ -1,6 +1,16 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+function DefaultLoadingSkeleton() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-12" role="status">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="text-sm text-muted-foreground">Loading…</p>
+    </div>
+  );
+}
 
 export function QueryBoundary({
   isLoading,
@@ -17,7 +27,7 @@ export function QueryBoundary({
   children: React.ReactNode;
   skeleton?: React.ReactNode;
 }) {
-  if (isLoading) return <>{skeleton ?? <div className="animate-pulse h-32 bg-muted-bg rounded-lg" />}</>;
+  if (isLoading) return <>{skeleton ?? <DefaultLoadingSkeleton />}</>;
   if (isError)
     return (
       <div className="p-4 border border-red-200 rounded-lg bg-red-50">

@@ -7,6 +7,9 @@ import { issuePasswordInviteEmail } from "@/lib/password-invite";
 import { handleRouteError } from "@/lib/route-utils";
 import { createEmployeeSchema } from "@/lib/validations";
 
+export const dynamic = "force-dynamic";
+
+
 export async function POST(req: Request) {
   try {
     const session = await requireHR();

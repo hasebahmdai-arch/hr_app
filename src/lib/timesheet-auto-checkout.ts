@@ -22,6 +22,20 @@ export function todayInCompanyTz(now = new Date()) {
   return format(zoned, "yyyy-MM-dd");
 }
 
+/** Calendar date string for a stored Date / ISO in company timezone (yyyy-MM-dd). */
+export function calendarDateString(value: Date | string) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  const d = typeof value === "string" ? new Date(value) : value;
+  return format(toZonedTime(d, companyTimezone()), "yyyy-MM-dd");
+}
+
+/** Current year in company timezone. */
+export function yearInCompanyTz(now = new Date()) {
+  return Number(todayInCompanyTz(now).slice(0, 4));
+}
+
 /** End of a calendar day (23:59:59.999) in company timezone, as a UTC Date. */
 export function endOfDayInCompanyTz(dateStr: string) {
   return fromZonedTime(`${dateStr}T23:59:59.999`, companyTimezone());

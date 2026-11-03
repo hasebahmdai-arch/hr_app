@@ -1,6 +1,6 @@
-import { differenceInMinutes, format } from "date-fns";
+import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { workedMinutesBetween } from "@/lib/profile-utils";
+import { workedSecondsBetween } from "@/lib/profile-utils";
 
 export type SessionState = "not_started" | "working" | "on_break" | "idle";
 
@@ -40,13 +40,17 @@ export function getOpenBreak(breaks: TimesheetBreak[] = []) {
   return breaks.find((b) => !b.endedAt);
 }
 
-export function sumBreakMinutes(breaks: TimesheetBreak[] = [], now = new Date()) {
+export function sumBreakSeconds(breaks: TimesheetBreak[] = [], now = new Date()) {
   let total = 0;
   for (const b of breaks) {
     const end = b.endedAt ?? now;
-    total += Math.max(differenceInMinutes(end, b.startedAt), 0);
+    total += Math.max(Math.floor((end.getTime() - b.startedAt.getTime()) / 1000), 0);
   }
   return total;
+}
+
+export function sumBreakMinutes(breaks: TimesheetBreak[] = [], now = new Date()) {
+  return Math.floor(sumBreakSeconds(breaks, now) / 60);
 }
 
 /** Normalize legacy single checkIn/out into sessions[]; strip nothing here (DB layer). */
@@ -93,8 +97,8 @@ export function allBreaksFromSessions(sessions: WorkSession[]): TimesheetBreak[]
   return sessions.flatMap((s) => s.breaks ?? []);
 }
 
-/** Gross elapsed minus break minutes across all sessions. */
-export function computeNetWorkedMinutes(
+/** Gross elapsed minus break seconds for one session. */
+export function computeNetWorkedSeconds(
   checkIn?: Date | null,
   checkOut?: Date | null,
   now = new Date(),
@@ -102,17 +106,30 @@ export function computeNetWorkedMinutes(
 ) {
   if (!checkIn) return 0;
   const end = checkOut ?? now;
-  const gross = workedMinutesBetween(checkIn, end);
-  return Math.max(gross - sumBreakMinutes(breaks, now), 0);
+  const gross = workedSecondsBetween(checkIn, end);
+  return Math.max(gross - sumBreakSeconds(breaks, now), 0);
 }
 
-export function computeNetWorkedFromSessions(sessions: WorkSession[], now = new Date()) {
+export function computeNetWorkedMinutes(
+  checkIn?: Date | null,
+  checkOut?: Date | null,
+  now = new Date(),
+  breaks: TimesheetBreak[] = []
+) {
+  return Math.floor(computeNetWorkedSeconds(checkIn, checkOut, now, breaks) / 60);
+}
+
+export function computeNetWorkedSecondsFromSessions(sessions: WorkSession[], now = new Date()) {
   let total = 0;
   for (const s of sessions) {
     if (!s.checkIn) continue;
-    total += computeNetWorkedMinutes(s.checkIn, s.checkOut, now, s.breaks ?? []);
+    total += computeNetWorkedSeconds(s.checkIn, s.checkOut, now, s.breaks ?? []);
   }
   return total;
+}
+
+export function computeNetWorkedFromSessions(sessions: WorkSession[], now = new Date()) {
+  return Math.floor(computeNetWorkedSecondsFromSessions(sessions, now) / 60);
 }
 
 export function syncDerivedFields(sessions: WorkSession[], now = new Date()) {
@@ -120,14 +137,18 @@ export function syncDerivedFields(sessions: WorkSession[], now = new Date()) {
   const lastClosed = [...sessions].reverse().find((s) => s.checkOut);
   const open = getOpenSession(sessions);
   const allBreaks = allBreaksFromSessions(sessions);
+  const breakSeconds = sumBreakSeconds(allBreaks, now);
+  const workedSeconds = computeNetWorkedSecondsFromSessions(sessions, now);
   return {
     checkIn: first?.checkIn,
     checkOut: open ? undefined : lastClosed?.checkOut,
     checkInLocation: first?.checkInLocation,
     checkOutLocation: open ? undefined : lastClosed?.checkOutLocation,
     breaks: allBreaks,
-    breakMinutes: sumBreakMinutes(allBreaks, now),
-    workedMinutes: computeNetWorkedFromSessions(sessions, now),
+    breakSeconds,
+    breakMinutes: Math.floor(breakSeconds / 60),
+    workedSeconds,
+    workedMinutes: Math.floor(workedSeconds / 60),
   };
 }
 
@@ -147,7 +168,7 @@ export function getSessionState(record: {
 
 export function formatTimeDisplay(date?: Date | null) {
   if (!date) return undefined;
-  return format(date, "h:mm a");
+  return format(toZonedTime(date, companyTimezone()), "h:mm a");
 }
 
 const LATE_GRACE_MINUTES = 30;
@@ -217,7 +238,8 @@ export function buildTodaySession(
   const open = getOpenSession(sessions);
   const allBreaks = allBreaksFromSessions(sessions);
   const openBreak = open ? getOpenBreak(open.breaks ?? []) : undefined;
-  const breakTotalMinutes = sumBreakMinutes(allBreaks);
+  const breakTotalSeconds = sumBreakSeconds(allBreaks);
+  const workedSecondsSoFar = computeNetWorkedSecondsFromSessions(sessions);
   const state = getSessionState(record);
   const first = sessions[0];
   const lastClosed = [...sessions].reverse().find((s) => s.checkOut);
@@ -230,9 +252,11 @@ export function buildTodaySession(
     checkOutDisplay: open ? undefined : formatTimeDisplay(lastClosed?.checkOut),
     shiftStart: shift?.startTime,
     shiftEnd: shift?.endTime,
-    breakTotalMinutes,
+    breakTotalSeconds,
+    breakTotalMinutes: Math.floor(breakTotalSeconds / 60),
     activeBreakStartedAt: openBreak?.startedAt.toISOString(),
-    workedMinutesSoFar: computeNetWorkedFromSessions(sessions),
+    workedSecondsSoFar,
+    workedMinutesSoFar: Math.floor(workedSecondsSoFar / 60),
     expectedMinutes: record?.expectedMinutes ?? 480,
     checkinStatus: record?.checkinStatus,
     checkoutStatus: record?.checkoutStatus,

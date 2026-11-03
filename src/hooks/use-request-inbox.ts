@@ -19,6 +19,7 @@ export function useRequestInbox(status: string, page = 1) {
       fetcher<InboxResponse>(
         `/api/requests/inbox${buildQuery({ status, page, limit: 20 })}`
       ),
+    refetchOnMount: true,
   });
 }
 
@@ -27,7 +28,9 @@ export function useRequestAttentionCount(enabled = true) {
     queryKey: queryKeys.requestInboxCount(),
     queryFn: () => fetcher<{ count: number }>("/api/requests/inbox/count"),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
+    refetchOnMount: true,
     enabled,
   });
 }

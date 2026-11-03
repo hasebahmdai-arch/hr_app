@@ -5,6 +5,9 @@ import connectDB from "@/lib/db";
 import { getHolidayDatesInRange } from "@/lib/holidays";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(req: Request) {
   try {
     await requireSession();

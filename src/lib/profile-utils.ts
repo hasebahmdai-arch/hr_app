@@ -1,4 +1,5 @@
-import { differenceInMinutes, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 
 const PROFILE_FIELDS = [
   "firstName",
@@ -53,10 +54,16 @@ export function minutesToTimeLabel(minutes: number | null) {
 export function dateToCheckInMinutes(iso?: string | Date | null) {
   if (!iso) return null;
   const d = typeof iso === "string" ? parseISO(iso) : iso;
-  return d.getHours() * 60 + d.getMinutes();
+  const tz = process.env.COMPANY_TIMEZONE || "Asia/Karachi";
+  const zoned = toZonedTime(d, tz);
+  return zoned.getHours() * 60 + zoned.getMinutes();
+}
+
+export function workedSecondsBetween(checkIn?: Date | null, checkOut?: Date | null) {
+  if (!checkIn || !checkOut) return 0;
+  return Math.max(Math.floor((checkOut.getTime() - checkIn.getTime()) / 1000), 0);
 }
 
 export function workedMinutesBetween(checkIn?: Date | null, checkOut?: Date | null) {
-  if (!checkIn || !checkOut) return 0;
-  return Math.max(differenceInMinutes(checkOut, checkIn), 0);
+  return Math.floor(workedSecondsBetween(checkIn, checkOut) / 60);
 }

@@ -25,6 +25,10 @@ export function useProfile(employeeId?: string) {
   });
 }
 
+function invalidateProfiles(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["profile"] });
+}
+
 export function useUpdateProfile(employeeId?: string) {
   const qc = useQueryClient();
   const { data: session } = useSession();
@@ -39,9 +43,10 @@ export function useUpdateProfile(employeeId?: string) {
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId ? employeeId : "self") });
-      qc.invalidateQueries({ queryKey: queryKeys.profile() });
+      invalidateProfiles(qc);
       qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: queryKeys.leaveBalancesMe() });
+      qc.invalidateQueries({ queryKey: queryKeys.dashboard.celebrations() });
     },
   });
 }
@@ -55,9 +60,7 @@ export function useCreateEmployeeDocument(employeeId: string) {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId) });
-      qc.invalidateQueries({ queryKey: queryKeys.profile("self") });
-      qc.invalidateQueries({ queryKey: queryKeys.profile() });
+      invalidateProfiles(qc);
     },
   });
 }
@@ -70,9 +73,7 @@ export function useDeleteEmployeeDocument(employeeId: string) {
         method: "DELETE",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.profile(employeeId) });
-      qc.invalidateQueries({ queryKey: queryKeys.profile("self") });
-      qc.invalidateQueries({ queryKey: queryKeys.profile() });
+      invalidateProfiles(qc);
     },
   });
 }

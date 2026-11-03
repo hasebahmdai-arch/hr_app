@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { useNotifications, useMarkNotificationsRead } from "@/hooks/use-notifications";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,9 +52,9 @@ export function NotificationBell() {
             ))}
             <DropdownMenuSeparator />
             <div className="p-2">
-              <Button variant="ghost" size="sm" className="w-full" onClick={handleMarkAll} disabled={markRead.isPending}>
+              <LoadingButton variant="ghost" size="sm" className="w-full" onClick={handleMarkAll} loading={markRead.isPending}>
                 Mark all read
-              </Button>
+              </LoadingButton>
             </div>
           </>
         ) : (

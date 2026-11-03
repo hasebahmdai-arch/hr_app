@@ -5,6 +5,9 @@ import { Employee } from "@/lib/models";
 import { issuePasswordInviteEmail } from "@/lib/password-invite";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
 /** Resend set-password invite — HR does not set passwords. */
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   try {

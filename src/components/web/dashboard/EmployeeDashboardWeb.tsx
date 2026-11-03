@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { ChevronLeft, ChevronRight, Cake, Award, FileText } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { Avatar } from "@/components/shared/Avatar";
@@ -21,13 +22,20 @@ import { ClockWidget } from "@/components/shared/dashboard/ClockWidget";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 
 const CHART_COLOR = "#F97316";
 
 export function EmployeeDashboardWeb() {
   const { data: session } = useSession();
+  const queryClient = useQueryClient();
   const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
-  const { attendance, celebrations, announcements, isLoading, isError, refetchAll } = useDashboard(month, false);
+  const { attendance, celebrations, announcements, isLoading, isError, refetchAll: refetchDash } = useDashboard(month, false);
+
+  function refetchAll() {
+    refetchDash();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.todaySession() });
+  }
 
   const att = attendance.data;
   const cel = celebrations.data;
@@ -54,6 +62,7 @@ export function EmployeeDashboardWeb() {
           tiles={att?.statTiles}
           holidays={att?.holidays}
           leaveBalances={att?.leaveBalances}
+          month={month}
         />
       </QueryBoundary>
 
@@ -117,6 +126,10 @@ export function EmployeeDashboardWeb() {
           <CardContent className="pt-4">
             {ann?.announcements.length ? ann.announcements.slice(0, 3).map((a, i) => (
               <div key={a._id} className={i === 0 ? "p-3 rounded-xl bg-primary-tint mb-2" : "mb-2"}>
+                {a.imageFileId ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/api/files/${a.imageFileId}`} alt="" className="mb-2 h-20 w-full rounded-md object-cover" />
+                ) : null}
                 <p className="text-sm font-medium">{a.title}</p>
                 <p className="text-xs text-muted-foreground line-clamp-2">{a.body}</p>
               </div>

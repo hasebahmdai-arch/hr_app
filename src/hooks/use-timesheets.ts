@@ -32,6 +32,8 @@ export function useTodaySession() {
     queryKey: queryKeys.todaySession(),
     queryFn: () => fetcher<TodaySessionResponse>("/api/timesheets/today"),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -48,6 +50,7 @@ export function usePunchAction() {
       qc.invalidateQueries({ queryKey: ["timesheets"] });
       qc.invalidateQueries({ queryKey: ["punch-events"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["hr-dashboard"] });
     },
   });
 }

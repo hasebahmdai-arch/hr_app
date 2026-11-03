@@ -11,14 +11,19 @@ import {
   shiftToMinutes,
 } from "@/lib/profile-utils";
 import { handleRouteError } from "@/lib/route-utils";
+import { todayInCompanyTz } from "@/lib/timesheet-auto-checkout";
 import { formatTimeDisplay } from "@/lib/timesheet-session";
 import type { DashboardAttendanceResponse } from "@/types/api";
+
+export const dynamic = "force-dynamic";
+
 
 export async function GET(req: Request) {
   try {
     const session = await requireSession();
     const { searchParams } = new URL(req.url);
-    const month = searchParams.get("month") || format(new Date(), "yyyy-MM");
+    const today = todayInCompanyTz();
+    const month = searchParams.get("month") || today.slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(month)) {
       return apiError("Invalid month format. Use YYYY-MM", "VALIDATION_ERROR", 400);
     }
@@ -28,7 +33,6 @@ export async function GET(req: Request) {
     const monthEnd = endOfMonth(monthStart);
     const dateFrom = format(monthStart, "yyyy-MM-dd");
     const dateTo = format(monthEnd, "yyyy-MM-dd");
-    const today = format(new Date(), "yyyy-MM-dd");
     const year = monthStart.getFullYear();
 
     const [employee, records, holidays, balances] = await Promise.all([

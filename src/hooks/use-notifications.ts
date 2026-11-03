@@ -16,6 +16,7 @@ export function useNotifications(page = 1, unreadOnly = false) {
         `/api/notifications${buildQuery({ page, limit: 20, unread: unreadOnly ? "true" : undefined })}`
       ),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
 }
@@ -26,8 +27,8 @@ export function useMarkNotificationsRead() {
     mutationFn: (payload: { ids?: string[]; markAllRead?: boolean; typePrefix?: string }) =>
       fetcher("/api/notifications", { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.notifications() });
-      qc.invalidateQueries({ queryKey: ["request-inbox"] });
+      qc.invalidateQueries({ queryKey: queryKeys.notifications(), refetchType: "all" });
+      qc.invalidateQueries({ queryKey: ["request-inbox"], refetchType: "all" });
     },
   });
 }

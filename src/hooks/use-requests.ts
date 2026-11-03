@@ -14,7 +14,24 @@ export function useRequests(type: RequestType, status: string, page = 1) {
       fetcher<PaginatedResponse<BaseRequest>>(
         `/api/requests/${type}${buildQuery({ status: status === "ALL" ? undefined : status, page })}`
       ),
+    refetchOnMount: true,
   });
+}
+
+async function invalidateAfterRequestChange(
+  qc: ReturnType<typeof useQueryClient>,
+  type: RequestType
+) {
+  await Promise.all([
+    qc.invalidateQueries({ queryKey: ["requests", type], refetchType: "all" }),
+    qc.invalidateQueries({ queryKey: ["request-inbox"], refetchType: "all" }),
+    qc.invalidateQueries({ queryKey: ["dashboard"] }),
+    qc.invalidateQueries({ queryKey: queryKeys.notifications() }),
+    qc.invalidateQueries({ queryKey: queryKeys.todaySession() }),
+    qc.invalidateQueries({ queryKey: ["timesheets"] }),
+    qc.invalidateQueries({ queryKey: ["hr-dashboard"] }),
+    qc.invalidateQueries({ queryKey: queryKeys.leaveBalancesMe() }),
+  ]);
 }
 
 export function useCreateRequest(type: RequestType) {
@@ -25,14 +42,8 @@ export function useCreateRequest(type: RequestType) {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["requests", type] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      qc.invalidateQueries({ queryKey: ["request-inbox"] });
-      qc.invalidateQueries({ queryKey: queryKeys.notifications() });
-      qc.invalidateQueries({ queryKey: queryKeys.todaySession() });
-      qc.invalidateQueries({ queryKey: ["timesheets"] });
-      qc.invalidateQueries({ queryKey: queryKeys.hrDashboard.attendance("") });
+    onSuccess: async () => {
+      await invalidateAfterRequestChange(qc, type);
     },
   });
 }
@@ -40,19 +51,21 @@ export function useCreateRequest(type: RequestType) {
 export function useRequestAction(type: RequestType) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" | "request_cancel" | "cancel" }) =>
+    mutationFn: ({
+      id,
+      action,
+      fields,
+    }: {
+      id: string;
+      action: "approve" | "reject" | "request_cancel" | "cancel" | "update";
+      fields?: Record<string, unknown>;
+    }) =>
       fetcher(`/api/requests/${type}/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, fields }),
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["requests", type] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      qc.invalidateQueries({ queryKey: ["request-inbox"] });
-      qc.invalidateQueries({ queryKey: queryKeys.notifications() });
-      qc.invalidateQueries({ queryKey: queryKeys.todaySession() });
-      qc.invalidateQueries({ queryKey: ["timesheets"] });
-      qc.invalidateQueries({ queryKey: queryKeys.hrDashboard.attendance("") });
+    onSuccess: async () => {
+      await invalidateAfterRequestChange(qc, type);
     },
   });
 }

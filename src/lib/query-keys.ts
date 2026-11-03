@@ -13,13 +13,15 @@ export const queryKeys = {
     attendance: (month: string, departmentId?: string) =>
       ["hr-dashboard", "attendance", month, departmentId ?? ""] as const,
     requests: (limit: number) => ["hr-dashboard", "requests", limit] as const,
+    personAttendance: (id: string, month: string) =>
+      ["hr-dashboard", "person-attendance", id, month] as const,
   },
   timesheets: (filters: TimesheetFilters) => ["timesheets", filters] as const,
   punchEvents: (filters: Record<string, string | undefined>) => ["punch-events", filters] as const,
   requests: (type: string, status: string, page: number) => ["requests", type, status, page] as const,
   requestInbox: (status: string, page: number) => ["request-inbox", status, page] as const,
   requestInboxCount: () => ["request-inbox", "count"] as const,
-  profile: (employeeId?: string) => ["profile", employeeId ?? "me"] as const,
+  profile: (employeeId?: string) => ["profile", employeeId ?? "self"] as const,
   notifications: () => ["notifications"] as const,
   people: (search?: string) => ["people", search ?? ""] as const,
   admin: {

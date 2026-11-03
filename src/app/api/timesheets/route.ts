@@ -10,6 +10,9 @@ import {
 } from "@/lib/timesheet-session";
 import type { PaginatedResponse } from "@/types/api";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(req: Request) {
   try {
     const session = await requireSession();
@@ -27,6 +30,12 @@ export async function GET(req: Request) {
 
     const status = searchParams.get("status");
     if (status) filter.statusCode = status;
+
+    const flag = searchParams.get("flag");
+    if (flag === "late") filter.checkinStatus = "Late";
+    else if (flag === "missedCheckout") filter.checkoutStatus = "Missed";
+    else if (flag === "weekendWork") filter.isWeekendWork = true;
+    else if (flag === "holidayWork") filter.isHolidayWork = true;
 
     const source = searchParams.get("source");
     if (source) filter.source = source;

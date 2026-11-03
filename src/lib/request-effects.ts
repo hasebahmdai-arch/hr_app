@@ -1,9 +1,18 @@
 import { format } from "date-fns";
+import { toZonedTime } from "date-fns-tz";
 import type { RequestType } from "@/lib/constants";
 import { Employee, Timesheet } from "@/lib/models";
 import { shiftToMinutes } from "@/lib/profile-utils";
 import { isHoliday } from "@/lib/holidays";
 import { isWeekendDate } from "@/lib/attendance-stats";
+
+function companyTimezone() {
+  return process.env.COMPANY_TIMEZONE || "Asia/Karachi";
+}
+
+function dateInCompanyTz(at: Date) {
+  return format(toZonedTime(at, companyTimezone()), "yyyy-MM-dd");
+}
 
 export interface TimesheetSnapshot {
   date: string;
@@ -31,10 +40,17 @@ function serializeTimesheet(doc: Record<string, unknown> | null): Record<string,
     workedMinutes: doc.workedMinutes,
     shortMinutes: doc.shortMinutes,
     breakMinutes: doc.breakMinutes,
+    breakSeconds: doc.breakSeconds,
+    workedSeconds: doc.workedSeconds,
     statusCode: doc.statusCode,
     source: doc.source,
     checkinStatus: doc.checkinStatus,
+    checkoutStatus: doc.checkoutStatus,
     expectedMinutes: doc.expectedMinutes,
+    sessions: doc.sessions,
+    breaks: doc.breaks,
+    isWeekendWork: doc.isWeekendWork,
+    isHolidayWork: doc.isHolidayWork,
   };
 }
 
@@ -121,18 +137,30 @@ export async function applyRequestEffect(
     const requestedTimestamp = request.requestedTimestamp as Date;
     if (!requestedTimestamp) throw new Error("Punch request missing requested time");
 
-    const date = format(new Date(requestedTimestamp), "yyyy-MM-dd");
-    const existing = await findTimesheet(employeeId, date);
     const punchAt = new Date(requestedTimestamp);
+    const date = dateInCompanyTz(punchAt);
+    const existing = await findTimesheet(employeeId, date);
     const { normalizeSessions, getOpenSession, syncDerivedFields, computeCheckinStatus } = await import(
       "@/lib/timesheet-session"
     );
     const sessions = normalizeSessions(existing as never);
 
     if (punchType === "check_in") {
-      if (getOpenSession(sessions)) throw new Error("An open check-in session already exists for this date");
+      // Correction: set/adjust check-in rather than failing when a session already exists.
+      const open = getOpenSession(sessions);
       const isFirst = sessions.length === 0;
-      sessions.push({ checkIn: punchAt, breaks: [] });
+      if (open) {
+        open.checkIn = punchAt;
+      } else if (sessions.length > 0) {
+        const first = sessions[0]!;
+        if (first.checkOut && punchAt.getTime() > new Date(first.checkOut).getTime()) {
+          throw new Error("Check-in time must be on or before check-out");
+        }
+        first.checkIn = punchAt;
+      } else {
+        sessions.push({ checkIn: punchAt, breaks: [] });
+      }
+      const primaryCheckIn = new Date(sessions[0]!.checkIn);
       const derived = syncDerivedFields(sessions, punchAt);
       const holidayWork = await isHoliday(date);
       const weekendWork = isWeekendDate(date);
@@ -142,9 +170,9 @@ export async function applyRequestEffect(
           sessions,
           source: "manual",
           statusCode: "P",
+          checkinStatus: computeCheckinStatus(primaryCheckIn, shift?.startTime),
           ...(isFirst
             ? {
-                checkinStatus: computeCheckinStatus(punchAt, shift?.startTime),
                 isHolidayWork: holidayWork,
                 isWeekendWork: weekendWork,
               }
@@ -152,12 +180,16 @@ export async function applyRequestEffect(
         }, shift)
       );
     } else if (punchType === "check_out") {
+      // Correction: close open session, or adjust last closed check-out.
       const open = getOpenSession(sessions);
-      if (!open) throw new Error("Cannot check out without an open check-in session");
-      if (punchAt.getTime() < new Date(open.checkIn).getTime()) {
+      const target = open ?? (sessions.length ? sessions[sessions.length - 1] : undefined);
+      if (!target?.checkIn) {
+        throw new Error("Cannot check out without a check-in session on this date");
+      }
+      if (punchAt.getTime() < new Date(target.checkIn).getTime()) {
         throw new Error("Check-out time must be on or after check-in");
       }
-      open.checkOut = punchAt;
+      target.checkOut = punchAt;
       const derived = syncDerivedFields(sessions, punchAt);
       const expectedMinutes = Number(existing?.expectedMinutes ?? expectedMinutesForShift(shift));
       dates.push(
@@ -167,6 +199,7 @@ export async function applyRequestEffect(
           shortMinutes: Math.max(expectedMinutes - derived.workedMinutes, 0),
           source: "manual",
           statusCode: "P",
+          checkoutStatus: "OK",
         }, shift)
       );
     } else {
@@ -180,16 +213,8 @@ export async function applyRequestEffect(
   }
 
   if (type === "wfh") {
-    const dayDates = (request.dates as Date[]) ?? [];
-    for (const day of dayDates) {
-      const date = format(new Date(day), "yyyy-MM-dd");
-      dates.push(
-        await applyDateEffect(employeeId, date, {
-          statusCode: "W",
-          source: "manual",
-        }, shift)
-      );
-    }
+    // WFH days are marked W and deducted by cron / scoped catch-up, not on approve.
+    return { dates: [] };
   }
 
   return { dates };
@@ -214,15 +239,30 @@ export async function revertRequestEffect(
 
     if (entry.before) {
       const restore: Record<string, unknown> = {};
+      const unset: string[] = [];
       for (const [key, value] of Object.entries(entry.before)) {
-        if (value === undefined) continue;
+        if (value === undefined || value === null) {
+          unset.push(key);
+          continue;
+        }
         if (key === "checkIn" || key === "checkOut") {
           restore[key] = value ? new Date(value as string) : undefined;
         } else {
           restore[key] = value;
         }
       }
-      await Timesheet.findOneAndUpdate({ employeeId, date: entry.date }, { $set: restore });
+      // Clear fields that were introduced by the approve effect but absent before.
+      for (const key of ["sessions", "checkoutStatus", "source", "checkinStatus"] as const) {
+        if (!(key in entry.before) && entry.after && key in (entry.after as object)) {
+          unset.push(key);
+        }
+      }
+      const update: Record<string, unknown> = {};
+      if (Object.keys(restore).length) update.$set = restore;
+      if (unset.length) update.$unset = Object.fromEntries(unset.map((k) => [k, ""]));
+      if (Object.keys(update).length) {
+        await Timesheet.findOneAndUpdate({ employeeId, date: entry.date }, update);
+      }
     }
   }
 }

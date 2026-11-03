@@ -2,15 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { LayoutDashboard, ClipboardList, Users, User, Plus, CalendarDays } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
+import { LayoutDashboard, ClipboardList, Users, User, Plus, CalendarDays, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MOBILE_NAV } from "@/lib/navigation";
+import { ADMIN_NAV, MOBILE_NAV } from "@/lib/navigation";
 import { NotificationBell } from "@/components/shared/NotificationBell";
 import { NavAttentionDot } from "@/components/shared/requests/RequestTypeHub";
 import { useRequestAttentionCount } from "@/hooks/use-request-inbox";
 import { useUnreadNotificationsByType } from "@/hooks/use-notifications";
 import { BrandLogo } from "@/components/shared/BrandLogo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 const ICONS: Record<string, React.ReactNode> = {
   LayoutDashboard: <LayoutDashboard className="h-5 w-5" />,
@@ -73,11 +81,40 @@ export function AppShellMobile({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-20">
-      <header className="sticky top-0 z-40 h-14 border-b bg-white flex items-center justify-between px-4">
+      <header className="sticky top-0 z-40 h-14 border-b bg-white flex items-center justify-between px-4 gap-2">
         <Link href="/app/dashboard" className="flex items-center" aria-label="Analytico HR">
           <BrandLogo height={24} className="rounded" />
         </Link>
-        <NotificationBell />
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="Account menu">
+                <Settings className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild>
+                <Link href="/app/profile">Profile</Link>
+              </DropdownMenuItem>
+              {isHR && (
+                <>
+                  <DropdownMenuSeparator />
+                  {ADMIN_NAV.map((item) => (
+                    <DropdownMenuItem key={item.href} asChild>
+                      <Link href={item.href}>{item.label}</Link>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
       <main className="flex-1 p-4 overflow-y-auto">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white safe-area-pb">

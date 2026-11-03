@@ -3,6 +3,9 @@ import { requireSession } from "@/lib/auth";
 import { buildProfileResponse } from "@/lib/employee-utils";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
 /** Current user profile. */
 export async function GET() {
   try {

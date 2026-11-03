@@ -19,10 +19,12 @@ import {
   Legend,
 } from "recharts";
 import { Users, UserCheck, Bell, TrendingUp, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useHrDashboard, downloadHrReport } from "@/hooks/use-hr-dashboard";
 import { useRequestInbox } from "@/hooks/use-request-inbox";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useDepartments } from "@/hooks/use-admin";
+import { queryKeys } from "@/lib/query-keys";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { KpiCard } from "@/components/shared/KpiCard";
@@ -43,15 +45,23 @@ export function HrDashboardWeb() {
   const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
   const [departmentId, setDepartmentId] = useState("");
   const [search, setSearch] = useState("");
-  const { overview, attendance, requests, isLoading, isError, refetchAll } = useHrDashboard(month, departmentId || undefined);
+  const queryClient = useQueryClient();
+  const { overview, attendance, requests, isLoading, isError, refetchAll: refetchHr } = useHrDashboard(month, departmentId || undefined);
   const { data: inbox } = useRequestInbox("ATTENTION", 1);
-  const { celebrations } = useDashboard(month, true);
+  const { celebrations, refetchAll: refetchDash } = useDashboard(month, true);
   const { data: departments } = useDepartments();
 
   const ov = overview.data;
   const att = attendance.data;
   const req = requests.data;
   const cel = celebrations.data;
+
+  function refetchAll() {
+    refetchHr();
+    refetchDash();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.todaySession() });
+    void queryClient.invalidateQueries({ queryKey: ["request-inbox"] });
+  }
 
   function shiftMonth(delta: number) {
     const [y, m] = month.split("-").map(Number);
@@ -91,7 +101,35 @@ export function HrDashboardWeb() {
             <KpiCard label="Avg Attendance" value={`${ov?.avgAttendancePct ?? 0}%`} icon={<TrendingUp className="h-8 w-8" />} />
           </div>
 
-          <AttendanceStatTiles tiles={ov?.statTiles} holidays={ov?.holidays} />
+          <AttendanceStatTiles tiles={ov?.statTiles} holidays={ov?.holidays} month={month} />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="shadow-card">
+              <CardHeader className="pb-2"><CardTitle className="text-base">Upcoming Birthdays</CardTitle></CardHeader>
+              <CardContent className="flex flex-wrap gap-4 pt-4">
+                {cel?.birthdays.length ? cel.birthdays.slice(0, 6).map((b) => (
+                  <div key={b._id} className="flex items-center gap-2">
+                    <Avatar firstName={b.firstName} lastName={b.lastName} fileId={b.avatarFileId} size="sm" />
+                    <div><p className="text-sm font-medium">{b.firstName} {b.lastName}</p><p className="text-xs text-muted-foreground">{b.date}</p></div>
+                  </div>
+                )) : <p className="text-sm text-muted-foreground">No birthdays soon</p>}
+              </CardContent>
+            </Card>
+            <Card className="shadow-card">
+              <CardHeader className="pb-2"><CardTitle className="text-base">Upcoming Anniversaries</CardTitle></CardHeader>
+              <CardContent className="flex flex-wrap gap-4 pt-4">
+                {cel?.anniversaries.length ? cel.anniversaries.slice(0, 6).map((a) => (
+                  <div key={a._id} className="flex items-center gap-2">
+                    <Avatar firstName={a.firstName} lastName={a.lastName} fileId={a.avatarFileId} size="sm" />
+                    <div>
+                      <p className="text-sm font-medium">{a.firstName} {a.lastName}</p>
+                      <p className="text-xs text-muted-foreground">{a.date} · {a.milestone} years</p>
+                    </div>
+                  </div>
+                )) : <p className="text-sm text-muted-foreground">No anniversaries soon</p>}
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="shadow-card">
@@ -242,35 +280,6 @@ export function HrDashboardWeb() {
             </CardContent>
           </Card>
 
-          {(cel?.birthdays.length || cel?.anniversaries.length) ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="shadow-card">
-                <CardHeader className="pb-2"><CardTitle className="text-base">Upcoming Birthdays</CardTitle></CardHeader>
-                <CardContent className="flex flex-wrap gap-4 pt-4">
-                  {cel?.birthdays.length ? cel.birthdays.slice(0, 6).map((b) => (
-                    <div key={b._id} className="flex items-center gap-2">
-                      <Avatar firstName={b.firstName} lastName={b.lastName} fileId={b.avatarFileId} size="sm" />
-                      <div><p className="text-sm font-medium">{b.firstName} {b.lastName}</p><p className="text-xs text-muted-foreground">{b.date}</p></div>
-                    </div>
-                  )) : <p className="text-sm text-muted-foreground">No birthdays soon</p>}
-                </CardContent>
-              </Card>
-              <Card className="shadow-card">
-                <CardHeader className="pb-2"><CardTitle className="text-base">Upcoming Anniversaries</CardTitle></CardHeader>
-                <CardContent className="flex flex-wrap gap-4 pt-4">
-                  {cel?.anniversaries.length ? cel.anniversaries.slice(0, 6).map((a) => (
-                    <div key={a._id} className="flex items-center gap-2">
-                      <Avatar firstName={a.firstName} lastName={a.lastName} fileId={a.avatarFileId} size="sm" />
-                      <div>
-                        <p className="text-sm font-medium">{a.firstName} {a.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{a.date} · {a.milestone} years</p>
-                      </div>
-                    </div>
-                  )) : <p className="text-sm text-muted-foreground">No anniversaries soon</p>}
-                </CardContent>
-              </Card>
-            </div>
-          ) : null}
         </div>
       </QueryBoundary>
     </div>

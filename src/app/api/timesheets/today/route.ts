@@ -4,6 +4,7 @@ import connectDB from "@/lib/db";
 import { Employee, Timesheet } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 import { processLeaveDeductionsForEmployee } from "@/lib/leave-deduct";
+import { processWfhDeductionsForEmployee } from "@/lib/wfh-deduct";
 import {
   autoCheckoutForgottenSessions,
   todayInCompanyTz,
@@ -18,6 +19,7 @@ export async function GET() {
     await connectDB();
     await autoCheckoutForgottenSessions(session.user.id);
     await processLeaveDeductionsForEmployee(session.user.id);
+    await processWfhDeductionsForEmployee(session.user.id);
 
     const today = todayInCompanyTz();
     const employee = await Employee.findById(session.user.id).populate("shiftId");

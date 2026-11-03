@@ -5,6 +5,9 @@ import { Announcement, CompanyDocument } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 import type { AnnouncementsResponse } from "@/types/api";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET() {
   try {
     await requireSession();

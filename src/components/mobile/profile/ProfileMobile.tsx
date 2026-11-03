@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar } from "@/components/shared/Avatar";
@@ -39,6 +40,9 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
   );
   const [casualLeaveDays, setCasualLeaveDays] = useState(
     profile.leaveBalances?.find((b) => b.leaveType === "Casual")?.entitled ?? 10
+  );
+  const [wfhLeaveDays, setWfhLeaveDays] = useState(
+    profile.leaveBalances?.find((b) => b.leaveType === "WFH")?.entitled ?? 2
   );
   const [inviteMessage, setInviteMessage] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -107,9 +111,9 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
               <input type="checkbox" checked={form.accountActive} onChange={(e) => updateField("accountActive", e.target.checked)} />
               Account active
             </label>
-            <Button type="button" variant="outline" className="w-full" onClick={handleResendInvite} disabled={resendInvite.isPending}>
-              {resendInvite.isPending ? "Sending..." : "Resend invite email"}
-            </Button>
+            <LoadingButton type="button" variant="outline" className="w-full" onClick={handleResendInvite} loading={resendInvite.isPending}>
+              Resend invite email
+            </LoadingButton>
             <Button type="button" variant="destructive" className="w-full" onClick={() => setDeleteOpen(true)}>
               Delete account
             </Button>
@@ -140,7 +144,13 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
                   <option value="Female">Female</option>
                 </select>
               </div>
-              {isHREditor && <ImageUpload onUploaded={(id) => updateField("avatarFileId", id)} />}
+              {isHREditor && (
+                <ImageUpload
+                  previewMode="image"
+                  value={form.avatarFileId || undefined}
+                  onUploaded={(file) => updateField("avatarFileId", file._id)}
+                />
+              )}
             </CardContent></Card>
           </AccordionContent>
         </AccordionItem>
@@ -150,6 +160,7 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
           <AccordionContent>
             <Card><CardContent className="pt-4 space-y-3">
               <div><Label>Current Address</Label><Input value={form.contactInfo?.currentAddress ?? ""} onChange={(e) => updateNested("contactInfo", "currentAddress", e.target.value)} disabled={readOnly} /></div>
+              <div><Label>Permanent Address</Label><Input value={form.contactInfo?.permanentAddress ?? ""} onChange={(e) => updateNested("contactInfo", "permanentAddress", e.target.value)} disabled={readOnly} /></div>
               <div><Label>Personal Phone</Label><Input value={form.contactInfo?.personalPhone ?? ""} onChange={(e) => updateNested("contactInfo", "personalPhone", e.target.value)} disabled={readOnly} /></div>
             </CardContent></Card>
           </AccordionContent>
@@ -193,11 +204,18 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
                         <Input
                           type="number"
                           min={0}
-                          value={b.leaveType === "Sick" ? sickLeaveDays : casualLeaveDays}
+                          value={
+                            b.leaveType === "Sick"
+                              ? sickLeaveDays
+                              : b.leaveType === "Casual"
+                                ? casualLeaveDays
+                                : wfhLeaveDays
+                          }
                           onChange={(e) => {
                             const n = Number(e.target.value);
                             if (b.leaveType === "Sick") setSickLeaveDays(n);
-                            else setCasualLeaveDays(n);
+                            else if (b.leaveType === "Casual") setCasualLeaveDays(n);
+                            else setWfhLeaveDays(n);
                           }}
                         />
                       </div>
@@ -224,19 +242,20 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
       </Accordion>
 
       {isHREditor && (
-        <Button
+        <LoadingButton
           className="w-full min-h-[44px]"
           onClick={() =>
             onSave({
               ...form,
               sickLeaveDays,
               casualLeaveDays,
+              wfhLeaveDays,
             })
           }
-          disabled={saving}
+          loading={saving}
         >
-          {saving ? "Saving..." : "Save Changes"}
-        </Button>
+          Save Changes
+        </LoadingButton>
       )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -250,9 +269,9 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
           {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleteEmployee.isPending}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteEmployee.isPending}>
-              {deleteEmployee.isPending ? "Deleting..." : "Delete permanently"}
-            </Button>
+            <LoadingButton variant="destructive" onClick={handleDelete} loading={deleteEmployee.isPending}>
+              Delete permanently
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

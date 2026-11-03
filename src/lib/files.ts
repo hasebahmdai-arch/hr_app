@@ -1,6 +1,6 @@
 import connectDB from "@/lib/db";
 import { deleteFromGridFS, type GridFSBucketName } from "@/lib/gridfs";
-import { FileMetadata } from "@/lib/models";
+import { CompanyDocument, FileMetadata } from "@/lib/models";
 import type { UserRole } from "@/types/domain";
 import mongoose from "mongoose";
 
@@ -19,12 +19,16 @@ export async function canAccessFile(
   // Avatars are visible to all logged-in users (e.g. birthday/anniversary cards)
   if (file.bucket === "avatars") return { allowed: true, file };
 
-  // Employee documents: visible to the subject employee only (HR handled above)
+  // Documents: personal (subject employee) or company-wide shared docs
   if (file.bucket === "documents") {
     const subjectId = file.employeeId?.toString();
     if (subjectId && (subjectId === userId || subjectId === employeeId)) {
       return { allowed: true, file };
     }
+    const isCompanyDoc = await CompanyDocument.exists({
+      $or: [{ fileId }, { thumbnailFileId: fileId }],
+    });
+    if (isCompanyDoc) return { allowed: true, file };
     return { allowed: false, file };
   }
 
@@ -41,4 +45,14 @@ export async function deleteFileMetadata(fileId: string) {
   if (!file) return;
   await deleteFromGridFS(file.bucket as GridFSBucketName, file.gridFsId as mongoose.Types.ObjectId);
   await FileMetadata.findByIdAndDelete(fileId);
+}
+
+/** Best-effort delete; ignores missing/invalid ids and GridFS errors. */
+export async function safeDeleteFile(fileId?: string | null) {
+  if (!fileId) return;
+  try {
+    await deleteFileMetadata(fileId);
+  } catch {
+    // continue even if GridFS or metadata is already gone
+  }
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AuthLayout } from "@/components/shared/AuthLayout";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -46,9 +46,9 @@ export default function ForgotPasswordPage() {
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {message && <p className="text-sm text-green-700">{message}</p>}
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Sending..." : "Send Reset Link"}
-        </Button>
+        <LoadingButton type="submit" className="w-full" loading={loading}>
+          Send Reset Link
+        </LoadingButton>
         <p className="text-center text-sm">
           <Link href="/login" className="text-primary hover:underline">Back to sign in</Link>
         </p>

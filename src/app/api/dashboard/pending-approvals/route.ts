@@ -5,6 +5,9 @@ import { REQUEST_MODELS } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 import type { PendingApprovalsResponse } from "@/types/api";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET() {
   try {
     await requireHR();

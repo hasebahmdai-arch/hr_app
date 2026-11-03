@@ -9,11 +9,15 @@ import {
   isAttendanceRequestType,
   revertRequestEffect,
 } from "@/lib/request-effects";
-import { assertCanTake, countLeaveDays } from "@/lib/leave-balance";
+import { assertCanTake, assertCanTakeWfh, countLeaveDays } from "@/lib/leave-balance";
 import { processLeaveDeductionsForEmployee, revertLeaveDeductions } from "@/lib/leave-deduct";
+import { processWfhDeductionsForEmployee, revertWfhDeductions } from "@/lib/wfh-deduct";
 import { handleRouteError } from "@/lib/route-utils";
-import { requestActionSchema, requestTypeSchema } from "@/lib/validations";
+import { createRequestBodySchema, requestActionSchema, requestTypeSchema } from "@/lib/validations";
 import type { RequestType } from "@/lib/constants";
+
+export const dynamic = "force-dynamic";
+
 
 export async function PATCH(req: Request, { params }: { params: { type: string; id: string } }) {
   try {
@@ -51,6 +55,74 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
     const isOwner = doc.employeeId.toString() === session.user.id;
     const isHR = session.user.role === "hr";
     const previousStatus = doc.status;
+
+    if (parsed.data.action === "update") {
+      if (!isOwner) return apiError("Forbidden", "FORBIDDEN", 403);
+      if (doc.status !== "PENDING") {
+        return apiError("Only PENDING requests can be edited", "INVALID_STATUS", 400);
+      }
+      const fields = parsed.data.fields ?? {};
+      const schema = createRequestBodySchema(requestType);
+      const fieldParsed = schema.safeParse(fields);
+      if (!fieldParsed.success) {
+        return apiError("Invalid request data", "VALIDATION_ERROR", 400, fieldParsed.error.issues);
+      }
+      const data = fieldParsed.data as Record<string, unknown>;
+      try {
+        if (requestType === "leave") {
+          const start = new Date(data.startDate as string);
+          const end = new Date(data.endDate as string);
+          const { days } = await assertCanTake(
+            session.user.id,
+            String(data.leaveType ?? ""),
+            start,
+            end,
+            doc._id.toString()
+          );
+          doc.leaveType = data.leaveType;
+          doc.startDate = start;
+          doc.endDate = end;
+          doc.daysRequested = days;
+          doc.reason = data.reason;
+        } else if (requestType === "reimbursement") {
+          doc.amount = data.amount;
+          doc.reason = data.reason;
+          doc.expenseDate = new Date(data.expenseDate as string);
+          if (data.receiptFileIds) doc.receiptFileIds = data.receiptFileIds;
+        } else if (requestType === "loans") {
+          doc.salaryCount = data.salaryCount;
+          doc.purpose = data.purpose;
+          doc.repaymentPlan = data.repaymentPlan;
+          doc.reason = data.reason;
+        } else if (requestType === "wfh") {
+          const dates = (data.dates as string[]).map((d) => new Date(d));
+          const { days } = await assertCanTakeWfh(session.user.id, dates, doc._id.toString());
+          doc.dates = dates;
+          doc.daysRequested = days;
+          doc.daysDeductedSoFar = 0;
+          doc.deductedDates = [];
+          doc.reason = data.reason;
+        } else if (requestType === "punch") {
+          doc.punchType = data.punchType;
+          doc.requestedTimestamp = new Date(data.requestedTimestamp as string);
+          doc.reason = data.reason;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Update failed";
+        return apiError(message, "VALIDATION_ERROR", 400);
+      }
+      await doc.save();
+      await writeAuditLog({
+        entityType: `${requestType}_request`,
+        entityId: doc._id.toString(),
+        actorId: session.user.id,
+        action: "update",
+        previousStatus,
+        newStatus: previousStatus,
+      });
+      return apiSuccess({ _id: doc._id.toString(), status: doc.status });
+    }
+
     let newStatus: string;
 
     switch (parsed.data.action) {
@@ -70,10 +142,16 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
         break;
       case "request_cancel":
         if (!isOwner) return apiError("Forbidden", "FORBIDDEN", 403);
-        if (doc.status !== "PENDING") {
+        if (doc.status === "PENDING") {
+          newStatus = "CANCELING";
+        } else if (
+          doc.status === "COMPLETED" &&
+          isAttendanceRequestType(requestType)
+        ) {
+          newStatus = "CANCELING";
+        } else {
           return apiError("Cannot cancel request in current status", "INVALID_STATUS", 400);
         }
-        newStatus = "CANCELING";
         break;
       case "cancel":
         if (!isOwner && !isHR) return apiError("Forbidden", "FORBIDDEN", 403);
@@ -104,6 +182,18 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
             doc.deductedDates = [];
             doc.effectAppliedAt = new Date();
             doc.effectSnapshot = { dates: [] };
+          } else if (requestType === "wfh") {
+            const dates = ((doc.dates as Date[]) ?? []).map((d) => new Date(d));
+            const { days } = await assertCanTakeWfh(
+              doc.employeeId.toString(),
+              dates,
+              doc._id.toString()
+            );
+            doc.daysRequested = days;
+            doc.daysDeductedSoFar = 0;
+            doc.deductedDates = [];
+            doc.effectAppliedAt = new Date();
+            doc.effectSnapshot = { dates: [] };
           } else {
             const snapshot = await applyRequestEffect(requestType, doc);
             if (snapshot) {
@@ -114,6 +204,10 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
         } else if (previousStatus === "CANCELING" && doc.effectAppliedAt) {
           if (requestType === "leave") {
             await revertLeaveDeductions(doc as never);
+            doc.daysDeductedSoFar = 0;
+            doc.deductedDates = [];
+          } else if (requestType === "wfh") {
+            await revertWfhDeductions(doc as never);
             doc.daysDeductedSoFar = 0;
             doc.deductedDates = [];
           } else {
@@ -137,11 +231,14 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
 
     if (
       parsed.data.action === "approve" &&
-      requestType === "leave" &&
       previousStatus === "PENDING" &&
       newStatus === "COMPLETED"
     ) {
-      await processLeaveDeductionsForEmployee(doc.employeeId.toString());
+      if (requestType === "leave") {
+        await processLeaveDeductionsForEmployee(doc.employeeId.toString());
+      } else if (requestType === "wfh") {
+        await processWfhDeductionsForEmployee(doc.employeeId.toString());
+      }
     }
 
     await writeAuditLog({

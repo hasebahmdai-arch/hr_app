@@ -7,6 +7,7 @@ import { handleRouteError } from "@/lib/route-utils";
 import { isHoliday } from "@/lib/holidays";
 import { isWeekendDate } from "@/lib/attendance-stats";
 import { processLeaveDeductionsForEmployee } from "@/lib/leave-deduct";
+import { processWfhDeductionsForEmployee } from "@/lib/wfh-deduct";
 import {
   autoCheckoutForgottenSessions,
   todayInCompanyTz,
@@ -25,6 +26,9 @@ import {
   type WorkSession,
 } from "@/lib/timesheet-session";
 import { punchSchema } from "@/lib/validations";
+
+export const dynamic = "force-dynamic";
+
 
 async function logPunchEvent(params: {
   employeeId: string;
@@ -76,6 +80,7 @@ export async function POST(req: Request) {
     await connectDB();
     await autoCheckoutForgottenSessions(session.user.id);
     await processLeaveDeductionsForEmployee(session.user.id);
+    await processWfhDeductionsForEmployee(session.user.id);
 
     const today = todayInCompanyTz();
     const now = new Date();
@@ -121,7 +126,13 @@ export async function POST(req: Request) {
       if (record) {
         record.expectedMinutes = expectedMinutes;
         record.source = "punch";
-        if (!record.statusCode || record.statusCode === "A" || record.statusCode === "H" || record.statusCode === "L") {
+        if (
+          !record.statusCode ||
+          record.statusCode === "A" ||
+          record.statusCode === "H" ||
+          record.statusCode === "L" ||
+          record.statusCode === "W"
+        ) {
           record.statusCode = "P";
         }
         if (isFirstOfDay) {

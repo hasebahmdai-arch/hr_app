@@ -11,12 +11,17 @@ export interface PeopleItem extends Pick<Employee, "firstName" | "lastName" | "e
   department?: { _id: string; name: string };
 }
 
-export function usePeople(search?: string, page = 1, includeInactive = false) {
+export function usePeople(search?: string, page = 1, includeInactive = false, limit = 20) {
   return useQuery({
-    queryKey: [...queryKeys.people(search), page, includeInactive],
+    queryKey: [...queryKeys.people(search), page, includeInactive, limit],
     queryFn: () =>
       fetcher<PaginatedResponse<PeopleItem>>(
-        `/api/people${buildQuery({ search, page, includeInactive: includeInactive || undefined })}`
+        `/api/people${buildQuery({
+          search,
+          page,
+          limit,
+          includeInactive: includeInactive || undefined,
+        })}`
       ),
   });
 }

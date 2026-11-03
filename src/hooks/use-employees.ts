@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/fetcher";
+import { queryKeys } from "@/lib/query-keys";
 import type { Employee } from "@/types/domain";
 
 export interface CreateEmployeeInput {
@@ -26,6 +27,7 @@ export interface CreateEmployeeInput {
   branchCode?: string;
   sickLeaveDays?: number;
   casualLeaveDays?: number;
+  wfhLeaveDays?: number;
 }
 
 export interface CreateEmployeeResponse {
@@ -43,6 +45,8 @@ export function useCreateEmployee() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["hr-dashboard"] });
+      qc.invalidateQueries({ queryKey: queryKeys.dashboard.celebrations() });
     },
   });
 }
@@ -64,6 +68,9 @@ export function useDeleteEmployee() {
       fetcher<{ deleted: boolean }>(`/api/employees/${employeeId}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["hr-dashboard"] });
+      qc.invalidateQueries({ queryKey: queryKeys.dashboard.celebrations() });
+      qc.invalidateQueries({ queryKey: ["profile"] });
     },
   });
 }

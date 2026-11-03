@@ -5,6 +5,9 @@ import { Shift } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 import { shiftSchema } from "@/lib/validations";
 
+export const dynamic = "force-dynamic";
+
+
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   try {
     await requireHR();

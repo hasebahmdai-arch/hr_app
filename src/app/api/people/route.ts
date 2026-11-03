@@ -5,6 +5,9 @@ import { Employee } from "@/lib/models";
 import { handleRouteError, parsePagination } from "@/lib/route-utils";
 import type { PaginatedResponse } from "@/types/api";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(req: Request) {
   try {
     await requireHR();

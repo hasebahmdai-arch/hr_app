@@ -5,17 +5,25 @@ import connectDB from "@/lib/db";
 import { Announcement, CompanyDocument } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 
+export const dynamic = "force-dynamic";
+
+
+const emptyToUndefined = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.trim() ? v.trim() : undefined));
+
 const companyDocSchema = z.object({
   title: z.string().min(1),
   fileId: z.string().min(1),
-  thumbnailFileId: z.string().optional(),
+  thumbnailFileId: emptyToUndefined,
   category: z.string().optional(),
 });
 
 const announcementSchema = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
-  imageFileId: z.string().optional(),
+  imageFileId: emptyToUndefined,
   type: z.string().optional(),
   publishedAt: z.string().optional(),
 });

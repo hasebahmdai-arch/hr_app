@@ -1,9 +1,13 @@
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireHR } from "@/lib/auth";
 import connectDB from "@/lib/db";
+import { safeDeleteFile } from "@/lib/files";
 import { Document, Employee, FileMetadata } from "@/lib/models";
 import { handleRouteError } from "@/lib/route-utils";
 import { z } from "zod";
+
+export const dynamic = "force-dynamic";
+
 
 const createDocumentSchema = z.object({
   fileId: z.string().min(1),
@@ -69,6 +73,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const doc = await Document.findOne({ _id: documentId, employeeId });
     if (!doc) return apiError("Document not found", "NOT_FOUND", 404);
 
+    await safeDeleteFile(doc.fileId?.toString());
     await Document.deleteOne({ _id: documentId });
     return apiSuccess({ deleted: true });
   } catch (error) {

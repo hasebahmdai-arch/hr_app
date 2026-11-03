@@ -69,7 +69,7 @@ export function AppShellWeb({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {WEB_NAV.map((item) => {
             if (item.href === "/app/people" && !isHR) return null;
-            if ("children" in item && item.children && !isHR) {
+            if ("children" in item && item.children) {
               const active = pathname.startsWith("/app/requests");
               return (
                 <div key={item.href}>
@@ -88,6 +88,18 @@ export function AppShellWeb({ children }: { children: React.ReactNode }) {
                   </button>
                   {requestsOpen && (
                     <div className="ml-4 mt-1 space-y-1">
+                      {isHR && (
+                        <Link
+                          href="/app/requests"
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors",
+                            pathname === "/app/requests" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted-bg"
+                          )}
+                        >
+                          Inbox
+                          <NavAttentionDot show={requestsAttention} className={pathname === "/app/requests" ? "bg-white" : undefined} />
+                        </Link>
+                      )}
                       {item.children.map((child) => {
                         const typeSlug = child.href.split("/").pop() ?? "";
                         const hasDot = (byType[typeSlug as keyof typeof byType] ?? 0) > 0;
@@ -108,23 +120,6 @@ export function AppShellWeb({ children }: { children: React.ReactNode }) {
                     </div>
                   )}
                 </div>
-              );
-            }
-            if ("children" in item && item.children && isHR) {
-              const active = pathname.startsWith("/app/requests");
-              return (
-                <Link
-                  key={item.href}
-                  href="/app/requests"
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                    active ? "bg-primary text-white" : "text-foreground hover:bg-muted-bg"
-                  )}
-                >
-                  {ICONS[item.icon]}
-                  {item.label}
-                  <NavAttentionDot show={requestsAttention} className={active ? "bg-white" : undefined} />
-                </Link>
               );
             }
             const active = pathname.startsWith(item.href);

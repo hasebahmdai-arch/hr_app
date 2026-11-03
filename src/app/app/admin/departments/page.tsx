@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useDepartments, useCreateDepartment } from "@/hooks/use-admin";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,9 +37,9 @@ export default function DepartmentsAdminPage() {
               <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
               <div><Label>Code</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required /></div>
               <div><Label>Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-              <Button type="submit" className="w-full" disabled={create.isPending}>
-                {create.isPending ? "Creating..." : "Create"}
-              </Button>
+              <LoadingButton type="submit" className="w-full" loading={create.isPending}>
+                Create
+              </LoadingButton>
             </form>
           </DialogContent>
         </Dialog>
@@ -46,13 +48,15 @@ export default function DepartmentsAdminPage() {
       <QueryBoundary isLoading={isLoading} isError={isError} onRetry={() => refetch()}>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {data?.map((d) => (
-            <Card key={d._id}>
-              <CardHeader className="pb-2"><CardTitle className="text-base">{d.name}</CardTitle></CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">Code: {d.code}</p>
-                {d.description && <p className="text-sm mt-1">{d.description}</p>}
-              </CardContent>
-            </Card>
+            <Link key={d._id} href={`/app/admin/departments/${d._id}`} className="block">
+              <Card className="hover:shadow-card transition-shadow h-full">
+                <CardHeader className="pb-2"><CardTitle className="text-base">{d.name}</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">Code: {d.code}</p>
+                  {d.description && <p className="text-sm mt-1">{d.description}</p>}
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       </QueryBoundary>

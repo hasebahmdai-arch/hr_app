@@ -4,9 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLayout } from "@/components/shared/AuthLayout";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/shared/PasswordInput";
 
 export default function ResetPasswordClient() {
   const router = useRouter();
@@ -53,16 +53,16 @@ export default function ResetPasswordClient() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="password">New Password</Label>
-          <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+          <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirm">Confirm Password</Label>
-          <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
+          <PasswordInput id="confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button type="submit" className="w-full" disabled={loading || !token}>
-          {loading ? "Saving..." : "Set Password"}
-        </Button>
+        <LoadingButton type="submit" className="w-full" loading={loading} disabled={!token}>
+          Set Password
+        </LoadingButton>
         <p className="text-center text-sm">
           <Link href="/login" className="text-primary hover:underline">Back to sign in</Link>
         </p>

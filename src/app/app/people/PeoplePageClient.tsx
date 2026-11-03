@@ -14,6 +14,7 @@ import { Avatar } from "@/components/shared/Avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useSession } from "next-auth/react";
@@ -44,6 +45,7 @@ const emptyForm = {
   branchCode: "",
   sickLeaveDays: "8",
   casualLeaveDays: "10",
+  wfhLeaveDays: "2",
 };
 
 export default function PeoplePageClient() {
@@ -90,6 +92,7 @@ export default function PeoplePageClient() {
         branchCode: form.branchCode || undefined,
         sickLeaveDays: Number(form.sickLeaveDays),
         casualLeaveDays: Number(form.casualLeaveDays),
+        wfhLeaveDays: Number(form.wfhLeaveDays),
       });
       setOpen(false);
       setForm(emptyForm);
@@ -184,14 +187,18 @@ export default function PeoplePageClient() {
                     <Label>Casual leave days</Label>
                     <Input type="number" min={0} value={form.casualLeaveDays} onChange={(e) => setForm({ ...form, casualLeaveDays: e.target.value })} required />
                   </div>
+                  <div>
+                    <Label>WFH days</Label>
+                    <Input type="number" min={0} value={form.wfhLeaveDays} onChange={(e) => setForm({ ...form, wfhLeaveDays: e.target.value })} required />
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   The employee will receive an email with a link to set their password. HR cannot set passwords.
                 </p>
                 {formError && <p className="text-sm text-red-600">{formError}</p>}
-                <Button type="submit" className="w-full" disabled={create.isPending}>
-                  {create.isPending ? "Creating..." : "Create User"}
-                </Button>
+                <LoadingButton type="submit" className="w-full" loading={create.isPending}>
+                  Create User
+                </LoadingButton>
               </form>
             </DialogContent>
           </Dialog>

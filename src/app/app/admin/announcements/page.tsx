@@ -1,29 +1,82 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
-import { useAdminDocuments, useCreateAdminDocument } from "@/hooks/use-admin";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  useAdminDocuments,
+  useCreateAdminDocument,
+  useDeleteAnnouncement,
+  useUpdateAnnouncement,
+} from "@/hooks/use-admin";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toastSuccess } from "@/lib/toast";
+
+const emptyForm = { title: "", body: "", imageFileId: "" };
 
 export default function AnnouncementsAdminPage() {
   const { data, isLoading, isError, refetch } = useAdminDocuments("announcements");
   const create = useCreateAdminDocument();
+  const update = useUpdateAnnouncement();
+  const remove = useDeleteAnnouncement();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", body: "", imageFileId: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    await create.mutateAsync({ itemType: "announcement", ...form, type: "general" });
-    setOpen(false);
-    setForm({ title: "", body: "", imageFileId: "" });
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setOpen(true);
   }
+
+  function openEdit(a: { _id: string; title: string; body: string; imageFileId?: string }) {
+    setEditingId(a._id);
+    setForm({ title: a.title, body: a.body, imageFileId: a.imageFileId ?? "" });
+    setOpen(true);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      if (editingId) {
+        await update.mutateAsync({
+          id: editingId,
+          title: form.title,
+          body: form.body,
+          imageFileId: form.imageFileId || undefined,
+          type: "general",
+        });
+        toastSuccess("Announcement updated");
+      } else {
+        await create.mutateAsync({ itemType: "announcement", ...form, type: "general" });
+        toastSuccess("Announcement published");
+      }
+      setOpen(false);
+      setEditingId(null);
+      setForm(emptyForm);
+    } catch {
+      /* mutationCache toasts the error */
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this announcement?")) return;
+    try {
+      await remove.mutateAsync(id);
+      toastSuccess("Announcement deleted");
+    } catch {
+      /* mutationCache toasts the error */
+    }
+  }
+
+  const saving = create.isPending || update.isPending;
 
   return (
     <div className="space-y-6">
@@ -31,18 +84,27 @@ export default function AnnouncementsAdminPage() {
         title="Announcements"
         subtitle="Posts visible on the employee dashboard"
         action={
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog
+            open={open}
+            onOpenChange={(next) => {
+              setOpen(next);
+              if (!next) {
+                setEditingId(null);
+                setForm(emptyForm);
+              }
+            }}
+          >
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" onClick={openCreate}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add Announcement
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New Announcement</DialogTitle>
+                <DialogTitle>{editingId ? "Edit Announcement" : "New Announcement"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <Label>Title</Label>
                   <Input
@@ -62,11 +124,14 @@ export default function AnnouncementsAdminPage() {
                 </div>
                 <ImageUpload
                   bucket="announcements"
-                  onUploaded={(id) => setForm({ ...form, imageFileId: id })}
+                  previewMode="image"
+                  value={form.imageFileId || undefined}
+                  onUploaded={(file) => setForm({ ...form, imageFileId: file._id })}
+                  onClear={() => setForm({ ...form, imageFileId: "" })}
                 />
-                <Button type="submit" className="w-full" disabled={create.isPending}>
-                  {create.isPending ? "Publishing..." : "Publish"}
-                </Button>
+                <LoadingButton type="submit" className="w-full" loading={saving}>
+                  {editingId ? "Save" : "Publish"}
+                </LoadingButton>
               </form>
             </DialogContent>
           </Dialog>
@@ -76,9 +141,38 @@ export default function AnnouncementsAdminPage() {
       <QueryBoundary isLoading={isLoading} isError={isError} onRetry={() => refetch()}>
         <div className="space-y-4">
           {data?.announcements?.map((a) => (
-            <Card key={a._id} className="border-0 shadow-card">
-              <CardHeader className="pb-2">
+            <Card key={a._id} className="border-0 shadow-card overflow-hidden">
+              {a.imageFileId ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/files/${a.imageFileId}`}
+                  alt=""
+                  className="w-full max-h-56 object-cover"
+                />
+              ) : null}
+              <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
                 <CardTitle className="text-base">{a.title}</CardTitle>
+                <div className="flex gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => openEdit(a)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <LoadingButton
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-600"
+                    loading={remove.isPending && remove.variables === a._id}
+                    onClick={() => handleDelete(a._id)}
+                  >
+                    {!(remove.isPending && remove.variables === a._id) && (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </LoadingButton>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-sm whitespace-pre-wrap">{a.body}</p>

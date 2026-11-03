@@ -9,7 +9,7 @@ import {
   type LeaveBalanceType,
 } from "@/lib/leave-balance";
 import { Employee, LeaveRequest, Timesheet } from "@/lib/models";
-import { todayInCompanyTz } from "@/lib/timesheet-auto-checkout";
+import { endOfDayInCompanyTz, todayInCompanyTz } from "@/lib/timesheet-auto-checkout";
 
 const BATCH_LIMIT = 200;
 
@@ -82,7 +82,7 @@ async function processOneLeave(doc: LeaveDoc, today: string) {
 export async function processLeaveDeductionsGlobal(limit = BATCH_LIMIT) {
   await connectDB();
   const today = todayInCompanyTz();
-  const endOfToday = new Date(`${today}T23:59:59.999`);
+  const endOfToday = endOfDayInCompanyTz(today);
 
   const requests = await LeaveRequest.find({
     status: "COMPLETED",
@@ -103,7 +103,7 @@ export async function processLeaveDeductionsGlobal(limit = BATCH_LIMIT) {
 export async function processLeaveDeductionsForEmployee(employeeId: string) {
   await connectDB();
   const today = todayInCompanyTz();
-  const endOfToday = new Date(`${today}T23:59:59.999`);
+  const endOfToday = endOfDayInCompanyTz(today);
 
   const requests = await LeaveRequest.find({
     employeeId,

@@ -6,6 +6,9 @@ import { handleRouteError, parsePagination } from "@/lib/route-utils";
 import { notificationPatchSchema } from "@/lib/validations";
 import type { PaginatedResponse } from "@/types/api";
 
+export const dynamic = "force-dynamic";
+
+
 export async function GET(req: Request) {
   try {
     const session = await requireSession();

@@ -18,6 +18,7 @@ export function useDashboard(month: string, isHR: boolean) {
         queryFn: () => fetcher<DashboardAttendanceResponse>(`/api/dashboard/attendance?month=${month}`),
         refetchOnWindowFocus: true,
         refetchInterval: 60_000,
+        refetchIntervalInBackground: false,
       },
       {
         queryKey: queryKeys.dashboard.celebrations(),
@@ -35,13 +36,20 @@ export function useDashboard(month: string, isHR: boolean) {
     ],
   });
 
+  const active = results.filter((_, i) => i !== 3 || isHR);
+
   return {
     attendance: results[0],
     celebrations: results[1],
     announcements: results[2],
     pendingApprovals: results[3],
-    isLoading: results.some((r) => r.isLoading),
-    isError: results.some((r) => r.isError),
-    refetchAll: () => results.forEach((r) => r.refetch()),
+    isLoading: active.some((r) => r.isLoading),
+    isError: active.some((r) => r.isError),
+    refetchAll: () => {
+      results.forEach((r, i) => {
+        if (i === 3 && !isHR) return;
+        void r.refetch();
+      });
+    },
   };
 }

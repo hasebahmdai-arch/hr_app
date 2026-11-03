@@ -5,10 +5,13 @@ import { notify } from "@/lib/notifications";
 import { REQUEST_MODELS } from "@/lib/models";
 import { generateRequestCode } from "@/lib/request-code";
 import { handleRouteError, parsePagination } from "@/lib/route-utils";
-import { assertCanTake, countLeaveDays } from "@/lib/leave-balance";
+import { assertCanTake, assertCanTakeWfh, countLeaveDays } from "@/lib/leave-balance";
 import { createRequestBodySchema, requestTypeSchema } from "@/lib/validations";
 import type { RequestType } from "@/lib/constants";
 import type { PaginatedResponse } from "@/types/api";
+
+export const dynamic = "force-dynamic";
+
 
 export async function GET(req: Request, { params }: { params: { type: string } }) {
   try {
@@ -88,6 +91,13 @@ export async function POST(req: Request, { params }: { params: { type: string } 
       data.deductedDates = [];
     }
 
+    if (type === "wfh" && Array.isArray(data.dates)) {
+      const { days } = await assertCanTakeWfh(session.user.id, data.dates as Date[]);
+      data.daysRequested = days;
+      data.daysDeductedSoFar = 0;
+      data.deductedDates = [];
+    }
+
     const created = await Model.create({
       ...data,
       requestCode,
@@ -123,6 +133,9 @@ function transformCreateData(type: RequestType, data: Record<string, unknown>) {
   if (type === "wfh" && Array.isArray(data.dates)) {
     result.dates = (data.dates as string[]).map((d) => new Date(d));
   }
+  if (type === "reimbursement" && data.expenseDate) {
+    result.expenseDate = new Date(data.expenseDate as string);
+  }
   return result;
 }
 
@@ -146,6 +159,10 @@ function serializeRequest(item: Record<string, unknown>) {
       : undefined,
     startDate: toIso(item.startDate),
     endDate: toIso(item.endDate),
+    expenseDate: toIso(item.expenseDate),
+    dates: Array.isArray(item.dates)
+      ? (item.dates as unknown[]).map((d) => toIso(d))
+      : item.dates,
     createdAt: (item.createdAt as Date)?.toISOString?.() ?? item.createdAt,
     reviewedAt: (item.reviewedAt as Date)?.toISOString?.() ?? item.reviewedAt,
   };

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar } from "@/components/shared/Avatar";
@@ -39,6 +40,9 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
   );
   const [casualLeaveDays, setCasualLeaveDays] = useState(
     profile.leaveBalances?.find((b) => b.leaveType === "Casual")?.entitled ?? 10
+  );
+  const [wfhLeaveDays, setWfhLeaveDays] = useState(
+    profile.leaveBalances?.find((b) => b.leaveType === "WFH")?.entitled ?? 2
   );
   const [inviteMessage, setInviteMessage] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -118,9 +122,9 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
               </label>
             </div>
             <div className="col-span-2 flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={handleResendInvite} disabled={resendInvite.isPending}>
-                {resendInvite.isPending ? "Sending..." : "Resend invite email"}
-              </Button>
+              <LoadingButton type="button" variant="outline" onClick={handleResendInvite} loading={resendInvite.isPending}>
+                Resend invite email
+              </LoadingButton>
               <Button type="button" variant="destructive" onClick={() => setDeleteOpen(true)}>
                 Delete account
               </Button>
@@ -162,7 +166,11 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
               {isHREditor && (
                 <div className="col-span-2">
                   <Label>Avatar</Label>
-                  <ImageUpload onUploaded={(id) => updateField("avatarFileId", id)} />
+                  <ImageUpload
+                    previewMode="image"
+                    value={form.avatarFileId || undefined}
+                    onUploaded={(file) => updateField("avatarFileId", file._id)}
+                  />
                 </div>
               )}
             </CardContent>
@@ -219,11 +227,18 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
                       <Input
                         type="number"
                         min={0}
-                        value={b.leaveType === "Sick" ? sickLeaveDays : casualLeaveDays}
+                        value={
+                          b.leaveType === "Sick"
+                            ? sickLeaveDays
+                            : b.leaveType === "Casual"
+                              ? casualLeaveDays
+                              : wfhLeaveDays
+                        }
                         onChange={(e) => {
                           const n = Number(e.target.value);
                           if (b.leaveType === "Sick") setSickLeaveDays(n);
-                          else setCasualLeaveDays(n);
+                          else if (b.leaveType === "Casual") setCasualLeaveDays(n);
+                          else setWfhLeaveDays(n);
                         }}
                       />
                     </div>
@@ -254,18 +269,19 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
       </Tabs>
 
       {isHREditor && (
-        <Button
+        <LoadingButton
           onClick={() =>
             onSave({
               ...form,
               sickLeaveDays,
               casualLeaveDays,
+              wfhLeaveDays,
             })
           }
-          disabled={saving}
+          loading={saving}
         >
-          {saving ? "Saving..." : "Save Changes"}
-        </Button>
+          Save Changes
+        </LoadingButton>
       )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -279,9 +295,9 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
           {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleteEmployee.isPending}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteEmployee.isPending}>
-              {deleteEmployee.isPending ? "Deleting..." : "Delete permanently"}
-            </Button>
+            <LoadingButton variant="destructive" onClick={handleDelete} loading={deleteEmployee.isPending}>
+              Delete permanently
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

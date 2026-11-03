@@ -4,6 +4,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { useSession } from "next-auth/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { Avatar } from "@/components/shared/Avatar";
@@ -11,11 +12,18 @@ import { AttendanceStatTiles } from "@/components/shared/dashboard/AttendanceSta
 import { ClockWidget } from "@/components/shared/dashboard/ClockWidget";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/query-keys";
 
 export function EmployeeDashboardMobile() {
   const { data: session } = useSession();
+  const queryClient = useQueryClient();
   const [month, setMonth] = useState(format(new Date(), "yyyy-MM"));
-  const { attendance, celebrations, announcements, isLoading, isError, refetchAll } = useDashboard(month, false);
+  const { attendance, celebrations, announcements, isLoading, isError, refetchAll: refetchDash } = useDashboard(month, false);
+
+  function refetchAll() {
+    refetchDash();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.todaySession() });
+  }
   const att = attendance.data;
   const cel = celebrations.data;
   const ann = announcements.data;
@@ -46,6 +54,7 @@ export function EmployeeDashboardMobile() {
             tiles={att?.statTiles}
             holidays={att?.holidays}
             leaveBalances={att?.leaveBalances}
+            month={month}
           />
 
           {(cel?.birthdays.length ?? 0) > 0 && (
@@ -88,6 +97,10 @@ export function EmployeeDashboardMobile() {
               <CardContent className="space-y-2 pt-4">
                 {ann.announcements.slice(0, 2).map((a) => (
                   <div key={a._id} className="p-3 rounded-xl bg-primary-tint">
+                    {a.imageFileId ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`/api/files/${a.imageFileId}`} alt="" className="mb-2 h-16 w-full rounded-md object-cover" />
+                    ) : null}
                     <p className="text-sm font-medium">{a.title}</p>
                     <p className="text-xs text-muted-foreground line-clamp-2">{a.body}</p>
                   </div>

@@ -6,6 +6,9 @@ import { handleRouteError, parsePagination } from "@/lib/route-utils";
 import { formatTimeDisplay } from "@/lib/timesheet-session";
 import type { PaginatedResponse } from "@/types/api";
 
+export const dynamic = "force-dynamic";
+
+
 /** Returns punch history without IP fields. */
 export async function GET(req: Request) {
   try {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ImageUpload } from "@/components/shared/ImageUpload";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCreateEmployeeDocument, useDeleteEmployeeDocument } from "@/hooks/use-profile";
@@ -27,6 +27,7 @@ export function ProfileDocumentsSection({
   const remove = useDeleteEmployeeDocument(employeeId);
   const [title, setTitle] = useState("");
   const [fileId, setFileId] = useState("");
+  const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
 
   async function handleAdd() {
@@ -39,6 +40,7 @@ export function ProfileDocumentsSection({
       await create.mutateAsync({ title: title.trim(), fileId, type: "general" });
       setTitle("");
       setFileId("");
+      setFileName("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save document");
     }
@@ -59,16 +61,16 @@ export function ProfileDocumentsSection({
                 {d.title || "Document"}
               </a>
               {canUpload && (
-                <Button
+                <LoadingButton
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="text-red-600 shrink-0"
-                  disabled={remove.isPending}
+                  loading={remove.isPending && remove.variables === d._id}
                   onClick={() => remove.mutate(d._id)}
                 >
-                  {remove.isPending ? "Removing..." : "Remove"}
-                </Button>
+                  Remove
+                </LoadingButton>
               )}
             </li>
           ))}
@@ -92,24 +94,34 @@ export function ProfileDocumentsSection({
           </div>
           <div>
             <Label>File</Label>
-            {fileId ? <p className="text-sm text-green-600 mb-1">File ready</p> : null}
             <ImageUpload
               bucket="documents"
               label="Choose file"
-              accept="*/*"
+              previewMode="filename"
+              value={fileId || undefined}
+              filename={fileName || undefined}
+              accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
               employeeId={employeeId}
-              onUploaded={(id) => setFileId(id)}
+              onUploaded={(file) => {
+                setFileId(file._id);
+                setFileName(file.filename);
+              }}
+              onClear={() => {
+                setFileId("");
+                setFileName("");
+              }}
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <Button
+          <LoadingButton
             type="button"
             size="sm"
-            disabled={create.isPending || !title.trim() || !fileId}
+            loading={create.isPending}
+            disabled={!title.trim() || !fileId}
             onClick={handleAdd}
           >
-            {create.isPending ? "Saving..." : "Add Document"}
-          </Button>
+            Add Document
+          </LoadingButton>
         </div>
       )}
     </div>
