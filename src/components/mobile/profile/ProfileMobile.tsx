@@ -196,7 +196,10 @@ export function ProfileMobile({ profile, employeeId, isHREditor, canManageDocume
                   <div key={b.leaveType} className="rounded-lg border p-3">
                     <p className="font-medium text-sm">{b.leaveType}</p>
                     <p className="text-xs text-muted-foreground">
-                      Entitled {b.entitled} · Used {b.used} · Remaining {b.remaining}
+                      Entitled {b.entitled} · Used {b.used} · Remaining{" "}
+                      <span className={b.remaining < 0 ? "text-red-600 font-medium" : undefined}>
+                        {b.remaining}
+                      </span>
                     </p>
                     {isHREditor && (
                       <div className="mt-2">

@@ -29,6 +29,14 @@ export function handleRouteError(error: unknown) {
     if (error.message === "INVALID_SHIFT") return apiError("Invalid shift", "VALIDATION_ERROR", 400);
     if (error.message === "BOOTSTRAP_DISABLED") return apiError("Setup already completed", "BOOTSTRAP_DISABLED", 403);
     if (error.message === "INVALID_BOOTSTRAP_SECRET") return apiError("Invalid bootstrap secret", "INVALID_BOOTSTRAP_SECRET", 403);
+    if (
+      error.message.startsWith("Insufficient ") ||
+      error.message === "Leave type must be Sick or Casual" ||
+      error.message === "At least one WFH date is required" ||
+      error.message === "All WFH dates must be in the same calendar year"
+    ) {
+      return apiError(error.message, "VALIDATION_ERROR", 400);
+    }
   }
   if (isDbUnavailable(error)) {
     console.error(error);

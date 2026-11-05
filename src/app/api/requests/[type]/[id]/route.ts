@@ -1,17 +1,12 @@
 import { apiError, apiSuccess } from "@/lib/api-response";
 import { requireSession } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
+import { approveRequestDoc } from "@/lib/approve-request";
 import connectDB from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { REQUEST_MODELS } from "@/lib/models";
-import {
-  applyRequestEffect,
-  isAttendanceRequestType,
-  revertRequestEffect,
-} from "@/lib/request-effects";
-import { assertCanTake, assertCanTakeWfh, countLeaveDays } from "@/lib/leave-balance";
-import { processLeaveDeductionsForEmployee, revertLeaveDeductions } from "@/lib/leave-deduct";
-import { processWfhDeductionsForEmployee, revertWfhDeductions } from "@/lib/wfh-deduct";
+import { isAttendanceRequestType } from "@/lib/request-effects";
+import { assertCanTake, assertCanTakeWfh } from "@/lib/leave-balance";
 import { handleRouteError } from "@/lib/route-utils";
 import { createRequestBodySchema, requestActionSchema, requestTypeSchema } from "@/lib/validations";
 import type { RequestType } from "@/lib/constants";
@@ -73,11 +68,9 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
           const start = new Date(data.startDate as string);
           const end = new Date(data.endDate as string);
           const { days } = await assertCanTake(
-            session.user.id,
             String(data.leaveType ?? ""),
             start,
-            end,
-            doc._id.toString()
+            end
           );
           doc.leaveType = data.leaveType;
           doc.startDate = start;
@@ -96,7 +89,7 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
           doc.reason = data.reason;
         } else if (requestType === "wfh") {
           const dates = (data.dates as string[]).map((d) => new Date(d));
-          const { days } = await assertCanTakeWfh(session.user.id, dates, doc._id.toString());
+          const { days } = await assertCanTakeWfh(dates);
           doc.dates = dates;
           doc.daysRequested = days;
           doc.daysDeductedSoFar = 0;
@@ -123,16 +116,24 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
       return apiSuccess({ _id: doc._id.toString(), status: doc.status });
     }
 
+    if (parsed.data.action === "approve") {
+      if (!isHR) return apiError("Forbidden", "FORBIDDEN", 403);
+      try {
+        const result = await approveRequestDoc(requestType, params.id, session.user.id);
+        return apiSuccess(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to approve request";
+        if (message === "Request not found") return apiError(message, "NOT_FOUND", 404);
+        if (message === "Cannot approve request in current status") {
+          return apiError(message, "INVALID_STATUS", 400);
+        }
+        return apiError(message, "TIMESHEET_APPLY_FAILED", 400);
+      }
+    }
+
     let newStatus: string;
 
     switch (parsed.data.action) {
-      case "approve":
-        if (!isHR) return apiError("Forbidden", "FORBIDDEN", 403);
-        if (!["PENDING", "CANCELING"].includes(doc.status)) {
-          return apiError("Cannot approve request in current status", "INVALID_STATUS", 400);
-        }
-        newStatus = doc.status === "CANCELING" ? "CANCELLED" : "COMPLETED";
-        break;
       case "reject":
         if (!isHR) return apiError("Forbidden", "FORBIDDEN", 403);
         if (doc.status !== "PENDING") {
@@ -164,82 +165,12 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
         return apiError("Invalid action", "VALIDATION_ERROR", 400);
     }
 
-    if (parsed.data.action === "approve") {
-      try {
-        if (previousStatus === "PENDING" && !doc.effectAppliedAt && isAttendanceRequestType(requestType)) {
-          if (requestType === "leave") {
-            const start = new Date(doc.startDate as Date);
-            const end = new Date(doc.endDate as Date);
-            const { days } = await assertCanTake(
-              doc.employeeId.toString(),
-              String(doc.leaveType ?? ""),
-              start,
-              end,
-              doc._id.toString()
-            );
-            doc.daysRequested = days || countLeaveDays(start, end);
-            doc.daysDeductedSoFar = 0;
-            doc.deductedDates = [];
-            doc.effectAppliedAt = new Date();
-            doc.effectSnapshot = { dates: [] };
-          } else if (requestType === "wfh") {
-            const dates = ((doc.dates as Date[]) ?? []).map((d) => new Date(d));
-            const { days } = await assertCanTakeWfh(
-              doc.employeeId.toString(),
-              dates,
-              doc._id.toString()
-            );
-            doc.daysRequested = days;
-            doc.daysDeductedSoFar = 0;
-            doc.deductedDates = [];
-            doc.effectAppliedAt = new Date();
-            doc.effectSnapshot = { dates: [] };
-          } else {
-            const snapshot = await applyRequestEffect(requestType, doc);
-            if (snapshot) {
-              doc.effectSnapshot = snapshot;
-              doc.effectAppliedAt = new Date();
-            }
-          }
-        } else if (previousStatus === "CANCELING" && doc.effectAppliedAt) {
-          if (requestType === "leave") {
-            await revertLeaveDeductions(doc as never);
-            doc.daysDeductedSoFar = 0;
-            doc.deductedDates = [];
-          } else if (requestType === "wfh") {
-            await revertWfhDeductions(doc as never);
-            doc.daysDeductedSoFar = 0;
-            doc.deductedDates = [];
-          } else {
-            await revertRequestEffect(requestType, doc);
-          }
-          doc.effectSnapshot = undefined;
-          doc.effectAppliedAt = undefined;
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to apply timesheet changes";
-        return apiError(message, "TIMESHEET_APPLY_FAILED", 400);
-      }
-    }
-
     doc.status = newStatus;
-    if (["approve", "reject"].includes(parsed.data.action)) {
+    if (parsed.data.action === "reject") {
       doc.reviewedBy = session.user.id;
       doc.reviewedAt = new Date();
     }
     await doc.save();
-
-    if (
-      parsed.data.action === "approve" &&
-      previousStatus === "PENDING" &&
-      newStatus === "COMPLETED"
-    ) {
-      if (requestType === "leave") {
-        await processLeaveDeductionsForEmployee(doc.employeeId.toString());
-      } else if (requestType === "wfh") {
-        await processWfhDeductionsForEmployee(doc.employeeId.toString());
-      }
-    }
 
     await writeAuditLog({
       entityType: `${requestType}_request`,
@@ -250,12 +181,11 @@ export async function PATCH(req: Request, { params }: { params: { type: string; 
       newStatus,
     });
 
-    if (parsed.data.action === "approve" || parsed.data.action === "reject") {
-      const approved = parsed.data.action === "approve";
+    if (parsed.data.action === "reject") {
       await notify({
         type: `${requestType.toUpperCase().replace(/-/g, "_")}_STATUS`,
-        title: `Request ${approved ? "approved" : "rejected"}`,
-        body: `Your ${requestType.replace(/-/g, " ")} request ${doc.requestCode} has been ${approved ? "approved" : "rejected"}.${
+        title: "Request rejected",
+        body: `Your ${requestType.replace(/-/g, " ")} request ${doc.requestCode} has been rejected.${
           parsed.data.reason ? `\n\nNote from HR: ${parsed.data.reason}` : ""
         }\n\nYou can view the request details in the portal.`,
         recipientId: doc.employeeId.toString(),

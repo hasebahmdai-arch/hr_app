@@ -219,7 +219,10 @@ export function ProfileWeb({ profile, employeeId, isHREditor, canManageDocuments
                 <div key={b.leaveType} className="rounded-lg border p-3">
                   <p className="font-medium text-sm">{b.leaveType}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Used {b.used} · Remaining {b.remaining}
+                    Used {b.used} · Remaining{" "}
+                    <span className={b.remaining < 0 ? "text-red-600 font-medium" : undefined}>
+                      {b.remaining}
+                    </span>
                   </p>
                   {isHREditor ? (
                     <div className="mt-2">

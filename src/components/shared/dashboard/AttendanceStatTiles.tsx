@@ -153,7 +153,13 @@ export function AttendanceStatTiles({
                       </div>
                       <div className="rounded-lg bg-primary-tint p-3">
                         <p className="text-xs text-muted-foreground mb-1">Remaining</p>
-                        <p className="text-xl font-bold text-primary">{b.remaining}</p>
+                        <p
+                          className={`text-xl font-bold ${
+                            b.remaining < 0 ? "text-red-600" : "text-primary"
+                          }`}
+                        >
+                          {b.remaining}
+                        </p>
                       </div>
                     </div>
                   </CardContent>

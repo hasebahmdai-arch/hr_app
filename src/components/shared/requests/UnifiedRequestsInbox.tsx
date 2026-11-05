@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { useRequestInbox } from "@/hooks/use-request-inbox";
-import { useRequestAction } from "@/hooks/use-requests";
+import { useApproveAllRequests, useRequestAction } from "@/hooks/use-requests";
 import { REQUEST_LABELS } from "@/lib/navigation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 import type { RequestType } from "@/lib/constants";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -125,6 +126,7 @@ export function UnifiedRequestsInbox() {
   const [status, setStatus] = useState(initialStatus);
   const [page, setPage] = useState(1);
   const { data, isLoading, isError, refetch } = useRequestInbox(status, page);
+  const approveAll = useApproveAllRequests();
 
   useEffect(() => {
     const s = searchParams.get("status");
@@ -132,9 +134,33 @@ export function UnifiedRequestsInbox() {
     if (s === "CANCELING") setStatus("PENDING");
   }, [searchParams]);
 
+  async function handleAcceptAll() {
+    try {
+      const result = await approveAll.mutateAsync({});
+      if (result.failed > 0) {
+        toastSuccess(`Approved ${result.approved}; ${result.failed} failed`);
+      } else {
+        toastSuccess(`Approved ${result.approved} request${result.approved === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      toastApiError(err, "Failed to approve all");
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Requests" subtitle="All employee requests in one place" />
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <PageHeader title="Requests" subtitle="All employee requests in one place" />
+        {status === "PENDING" && (data?.total ?? 0) > 0 ? (
+          <LoadingButton
+            size="sm"
+            loading={approveAll.isPending}
+            onClick={handleAcceptAll}
+          >
+            Accept all
+          </LoadingButton>
+        ) : null}
+      </div>
 
       <Tabs
         value={status}

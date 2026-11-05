@@ -81,7 +81,6 @@ export async function POST(req: Request, { params }: { params: { type: string } 
 
     if (type === "leave") {
       const { days } = await assertCanTake(
-        session.user.id,
         String(data.leaveType ?? ""),
         data.startDate as Date,
         data.endDate as Date
@@ -92,7 +91,7 @@ export async function POST(req: Request, { params }: { params: { type: string } 
     }
 
     if (type === "wfh" && Array.isArray(data.dates)) {
-      const { days } = await assertCanTakeWfh(session.user.id, data.dates as Date[]);
+      const { days } = await assertCanTakeWfh(data.dates as Date[]);
       data.daysRequested = days;
       data.daysDeductedSoFar = 0;
       data.deductedDates = [];

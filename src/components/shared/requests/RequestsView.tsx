@@ -5,9 +5,15 @@ import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Plus, X } from "lucide-react";
 import { format } from "date-fns";
-import { useRequests, useCreateRequest, useRequestAction } from "@/hooks/use-requests";
+import {
+  useRequests,
+  useCreateRequest,
+  useRequestAction,
+  useApproveAllRequests,
+} from "@/hooks/use-requests";
 import type { RequestType } from "@/lib/constants";
 import { REQUEST_LABELS } from "@/lib/navigation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 import { QueryBoundary } from "@/components/shared/QueryBoundary";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +58,7 @@ export function RequestsView({ type }: RequestsViewProps) {
   const { data, isLoading, isError, refetch } = useRequests(type, status, page);
   const create = useCreateRequest(type);
   const action = useRequestAction(type);
+  const approveAll = useApproveAllRequests();
 
   const [form, setForm] = useState<Record<string, string>>(() => defaultForm(type));
   const [wfhDates, setWfhDates] = useState<string[]>([todayIso()]);
@@ -106,10 +113,34 @@ export function RequestsView({ type }: RequestsViewProps) {
     action.isPending && action.variables?.id === id && action.variables?.action === act;
   const reasonRequired = type === "reimbursement";
 
+  async function handleAcceptAll() {
+    try {
+      const result = await approveAll.mutateAsync({ type });
+      if (result.failed > 0) {
+        toastSuccess(`Approved ${result.approved}; ${result.failed} failed`);
+      } else {
+        toastSuccess(`Approved ${result.approved} request${result.approved === 1 ? "" : "s"}`);
+      }
+    } catch (err) {
+      toastApiError(err, "Failed to approve all");
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-xl lg:text-2xl font-semibold">{REQUEST_LABELS[type]} Requests</h1>
+        <div className="flex items-center gap-2">
+          {isHR && status === "PENDING" && (data?.total ?? 0) > 0 ? (
+            <LoadingButton
+              size="sm"
+              variant="outline"
+              loading={approveAll.isPending}
+              onClick={handleAcceptAll}
+            >
+              Accept all
+            </LoadingButton>
+          ) : null}
         <Dialog
           open={modalOpen}
           onOpenChange={(open) => {
@@ -160,6 +191,7 @@ export function RequestsView({ type }: RequestsViewProps) {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Tabs value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>

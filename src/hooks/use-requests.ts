@@ -69,3 +69,44 @@ export function useRequestAction(type: RequestType) {
     },
   });
 }
+
+export type ApproveAllResult = {
+  approved: number;
+  failed: number;
+  results: Array<{
+    _id: string;
+    type: RequestType;
+    requestCode?: string;
+    ok: boolean;
+    error?: string;
+    status?: string;
+  }>;
+};
+
+/** Approve all PENDING/CANCELING requests. Pass type to scope to one kind; omit for all. */
+export function useApproveAllRequests() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body?: { type?: RequestType }) =>
+      fetcher<ApproveAllResult>("/api/requests/approve-all", {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+      }),
+    onSuccess: async (_data, vars) => {
+      if (vars?.type) {
+        await invalidateAfterRequestChange(qc, vars.type);
+      } else {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["requests"], refetchType: "all" }),
+          qc.invalidateQueries({ queryKey: ["request-inbox"], refetchType: "all" }),
+          qc.invalidateQueries({ queryKey: ["dashboard"] }),
+          qc.invalidateQueries({ queryKey: queryKeys.notifications() }),
+          qc.invalidateQueries({ queryKey: queryKeys.todaySession() }),
+          qc.invalidateQueries({ queryKey: ["timesheets"] }),
+          qc.invalidateQueries({ queryKey: ["hr-dashboard"] }),
+          qc.invalidateQueries({ queryKey: queryKeys.leaveBalancesMe() }),
+        ]);
+      }
+    },
+  });
+}

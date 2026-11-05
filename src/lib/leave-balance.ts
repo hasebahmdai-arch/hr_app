@@ -40,7 +40,7 @@ export function summarizeBalances(balances: LeaveBalanceRow[] | undefined, year:
       year,
       entitled,
       used,
-      remaining: Math.max(entitled - used, 0),
+      remaining: entitled - used,
     };
   });
 }
@@ -115,7 +115,7 @@ export async function ensureYearBalances(employeeId: string, year = new Date().g
 export function getRemaining(balances: LeaveBalanceRow[], leaveType: LeaveBalanceType, year: number) {
   const row = balances.find((b) => b.leaveType === leaveType && b.year === year);
   if (!row) return LEAVE_DEFAULTS[leaveType];
-  return Math.max(row.entitled - row.used, 0);
+  return row.entitled - row.used;
 }
 
 /** Remaining after subtracting reserved (approved but not yet deducted) days. */
@@ -158,22 +158,13 @@ export async function getAvailableRemaining(
   return Math.max(remaining - reserved, 0);
 }
 
-export async function assertCanTake(
-  employeeId: string,
-  leaveType: string,
-  start: Date,
-  end: Date,
-  excludeRequestId?: string
-) {
+export async function assertCanTake(leaveType: string, start: Date, end: Date) {
   if (!isLeaveBalanceType(leaveType) || leaveType === "WFH") {
     throw new Error("Leave type must be Sick or Casual");
   }
   const days = countLeaveDays(start, end);
   const year = leaveYearFromDate(start);
-  const available = await getAvailableRemaining(employeeId, leaveType, year, excludeRequestId);
-  if (days > available) {
-    throw new Error(`Insufficient ${leaveType} leave remaining (${available} left, ${days} requested)`);
-  }
+  // Over-quota leave is allowed (remaining may go negative after deduction).
   return { days, year, leaveType };
 }
 
@@ -212,11 +203,7 @@ export async function getAvailableWfhRemaining(
   return Math.max(remaining - reserved, 0);
 }
 
-export async function assertCanTakeWfh(
-  employeeId: string,
-  dates: Date[],
-  excludeRequestId?: string
-) {
+export async function assertCanTakeWfh(dates: Date[]) {
   if (!dates.length) throw new Error("At least one WFH date is required");
   const year = leaveYearFromDate(dates[0]!);
   for (const d of dates) {
@@ -224,10 +211,7 @@ export async function assertCanTakeWfh(
       throw new Error("All WFH dates must be in the same calendar year");
     }
   }
-  const available = await getAvailableWfhRemaining(employeeId, year, excludeRequestId);
-  if (dates.length > available) {
-    throw new Error(`Insufficient WFH days remaining (${available} left, ${dates.length} requested)`);
-  }
+  // Over-quota WFH is allowed (remaining may go negative after deduction).
   return { days: dates.length, year };
 }
 
